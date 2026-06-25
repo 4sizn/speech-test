@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SPEECH·LAB — 실시간 STT 콘솔</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23c6ff3a'/%3E%3Crect x='9' y='9' width='14' height='14' rx='3' fill='%230a0c10'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+
+    <div id="secure-banner" class="banner" hidden>
+      ⚠ 마이크 / 음성인식은 <b>https</b> 또는 <b>localhost</b>에서만 동작합니다. 로컬 서버로 열어주세요.
+    </div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo-mark" aria-hidden="true"></span>
+        <div class="brand-text">
+          <h1>SPEECH·LAB</h1>
+          <p>실시간 음성→텍스트 콘솔 · Provider 주입형</p>
+        </div>
+      </div>
+      <div class="signal-box">
+        <span id="signal" class="signal-dot" aria-hidden="true"></span>
+        <span class="signal-label">SIGNAL</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <!-- ── 좌측: 소스 & 컨트롤 ── -->
+      <section class="panel sources">
+        <div class="panel-head">
+          <h2>SOURCE</h2>
+          <span class="hint">입력 소스 & 엔진 설정</span>
+        </div>
+
+        <label class="field">
+          <span class="field-label">Provider</span>
+          <select id="provider-select" class="select"></select>
+        </label>
+        <p id="capability-hint" class="cap-hint"></p>
+
+        <div class="field">
+          <span class="field-label">Mode</span>
+          <div class="segmented" role="group" aria-label="인식 모드">
+            <button type="button" class="seg" data-mode="mic">🎙 마이크</button>
+            <button type="button" class="seg" data-mode="file">📁 파일</button>
+          </div>
+        </div>
+
+        <label class="field">
+          <span class="field-label">언어</span>
+          <select id="lang-select" class="select">
+            <option value="ko-KR">한국어 (ko-KR)</option>
+            <option value="en-US">English (en-US)</option>
+            <option value="ja-JP">日本語 (ja-JP)</option>
+            <option value="zh-CN">中文 (zh-CN)</option>
+          </select>
+        </label>
+
+        <!-- Provider별 설정 (configSchema 기반 자동 렌더) -->
+        <form id="provider-settings" class="provider-settings" autocomplete="off" onsubmit="return false" hidden></form>
+
+        <!-- WebSpeech 디지털 라우팅 (가상 오디오 장치 → 노이즈/볼륨 0) -->
+        <div id="routing" class="provider-settings" hidden>
+          <div class="settings-legend">🎛 디지털 라우팅 (WebSpeech 파일 · 노이즈 0)</div>
+          <label class="field mini">
+            <span class="field-label">출력 장치 (가상장치 선택)</span>
+            <select id="sink-select" class="select"></select>
+          </label>
+          <button id="btn-sink-refresh" class="btn ghost" type="button">장치 새로고침</button>
+          <p class="micro">
+            BlackHole 등 <b>가상 오디오 장치</b>로 출력을 보내고, macOS <b>시스템 설정 → 사운드 → 입력</b>을 그 장치로 지정하면
+            WebSpeech가 파일 오디오를 스피커·마이크 없이 디지털로 인식합니다. 설치: <code>brew install blackhole-2ch</code>
+          </p>
+        </div>
+
+        <div class="field">
+          <span class="field-label">오디오 업로드</span>
+          <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="오디오 파일 업로드">
+            <span class="dz-icon">⬆</span>
+            <span class="dz-text">드래그 & 드롭 또는 클릭</span>
+            <input id="file-input" type="file" accept="audio/*" multiple hidden />
+          </div>
+        </div>
+
+        <ul id="file-list" class="file-list"></ul>
+      </section>
+
+      <!-- ── 우측: 실시간 자막 콘솔 ── -->
+      <section class="panel console">
+        <div class="panel-head">
+          <h2>LIVE TRANSCRIPT</h2>
+          <div id="level-meter" class="meter" aria-hidden="true"></div>
+        </div>
+
+        <div class="player">
+          <audio id="audio" controls preload="metadata"></audio>
+        </div>
+
+        <div class="controls">
+          <button id="btn-start" class="btn primary" type="button">▶ 인식 시작</button>
+          <button id="btn-stop" class="btn" type="button" disabled>■ 중지</button>
+          <button id="btn-clear" class="btn ghost" type="button">자막 지우기</button>
+        </div>
+
+        <div class="transcript-wrap">
+          <div id="transcript" class="transcript" aria-live="polite"></div>
+          <div id="interim" class="interim"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="statusbar">
+      <span class="status-led" aria-hidden="true"></span>
+      <span id="status-text" data-kind="idle">초기화 중…</span>
+    </footer>
+
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>

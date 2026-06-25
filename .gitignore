@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+**/.DS_Store
+bun.lockb
+
+# Claude Code / OMC 세션 산출물
+.claude/
+.omc/
+
+# 임시 스크린샷
+_screen.png
