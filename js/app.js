@@ -204,7 +204,36 @@ function renderSettings(providerId, label, schema = []) {
   legend.textContent = `${label} 설정`;
   el.settings.appendChild(legend);
 
+  const collect = () => {
+    const values = {};
+    for (const f of schema) {
+      const node = $(`cfg-${f.key}`);
+      values[f.key] = f.type === 'checkbox' ? node.checked : node.value.trim();
+    }
+    return values;
+  };
+
   for (const f of schema) {
+    if (f.type === 'checkbox') {
+      const row = document.createElement('label');
+      row.className = 'check-row';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = `cfg-${f.key}`;
+      cb.checked = !!cfg[f.key];
+      const span = document.createElement('span');
+      span.textContent = f.label;
+      // 토글 즉시 적용(저장 버튼 없이)
+      cb.addEventListener('change', () => {
+        const values = collect();
+        saveCfg(providerId, values);
+        engine.configureProvider(values);
+        setStatus(`오프라인 모드 ${cb.checked ? 'ON' : 'OFF'}`, cb.checked ? 'ok' : 'idle');
+      });
+      row.append(cb, span);
+      el.settings.appendChild(row);
+      continue;
+    }
     const wrap = document.createElement('label');
     wrap.className = 'field mini';
     const name = document.createElement('span');
@@ -221,18 +250,20 @@ function renderSettings(providerId, label, schema = []) {
     el.settings.appendChild(wrap);
   }
 
-  const save = document.createElement('button');
-  save.type = 'button';
-  save.className = 'btn ghost';
-  save.textContent = '설정 저장';
-  save.addEventListener('click', () => {
-    const values = {};
-    for (const f of schema) values[f.key] = $(`cfg-${f.key}`).value.trim();
-    saveCfg(providerId, values);
-    engine.configureProvider(values);
-    setStatus(`${label} 설정 저장됨`, 'ok');
-  });
-  el.settings.appendChild(save);
+  // 텍스트 필드가 있을 때만 저장 버튼(체크박스 전용이면 즉시 적용)
+  if (schema.some((f) => f.type !== 'checkbox')) {
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'btn ghost';
+    save.textContent = '설정 저장';
+    save.addEventListener('click', () => {
+      const values = collect();
+      saveCfg(providerId, values);
+      engine.configureProvider(values);
+      setStatus(`${label} 설정 저장됨`, 'ok');
+    });
+    el.settings.appendChild(save);
+  }
 
   const note = document.createElement('p');
   note.className = 'micro';

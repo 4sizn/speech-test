@@ -21,6 +21,14 @@ export class WebSpeechProvider extends SttProvider {
   static capabilities = [Mode.MIC, Mode.FILE];
   // 파일 트랙을 captureStream으로 디지털 캡처해 start(track)로 주입 (음향 루프백 폐기)
   static fileInputKind = 'stream';
+  static configSchema = [
+    {
+      key: 'processLocally',
+      label: '오프라인(온디바이스) 인식 — 서버 전송 없이 로컬 처리',
+      type: 'checkbox',
+      default: false,
+    },
+  ];
 
   static isSupported() {
     return typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -78,10 +86,9 @@ export class WebSpeechProvider extends SttProvider {
     rec.maxAlternatives = 1;
 
     rec.onstart = () => {
+      const base = isFile ? '파일 인식 중 (오디오 트랙 직접 입력 · 노이즈/볼륨 무관)' : '마이크 인식 중';
       this._sink?.system(SystemEvent.STATUS, {
-        message: isFile
-          ? '파일 인식 중 (오디오 트랙 직접 입력 · 노이즈/볼륨 무관)'
-          : '마이크 인식 중',
+        message: base + (rec.processLocally ? ' · 🔒 오프라인(온디바이스)' : ' · ☁ 온라인'),
       });
     };
 
@@ -96,23 +103,38 @@ export class WebSpeechProvider extends SttProvider {
       if (interim) this._sink?.partial(interim.trim());
     };
 
+    let fatal = false;
     rec.onerror = (event) => {
-      if (event.error === 'aborted') return;
+      if (event.error === 'aborted' || event.error === 'no-speech') return; // 양성: 자동재시작에 맡김
+      // 치명적 에러는 재시작하면 무한 루프 → 중단
+      const FATAL = ['not-allowed', 'service-not-allowed', 'language-not-supported', 'audio-capture', 'network'];
+      if (FATAL.includes(event.error)) {
+        fatal = true;
+        this._active = false;
+      }
       this._sink?.error(new Error(`SpeechRecognition error: ${event.error}`));
     };
 
     rec.onend = () => {
-      // continuous 인식은 브라우저가 주기적으로 끊으므로, 활성 + 트랙이 살아있으면 자동 재시작
-      if (this._active && (!this.#track || this.#track.readyState === 'live')) {
+      // continuous 인식은 브라우저가 주기적으로 끊으므로, 활성 + 트랙 live + 치명적에러 아님이면 자동 재시작
+      if (this._active && !fatal && (!this.#track || this.#track.readyState === 'live')) {
         try {
           this.#track ? rec.start(this.#track) : rec.start();
         } catch {
           /* 이미 시작/트랙 종료 */
         }
-      } else if (!this._active) {
+      } else {
         this._sink?.system(SystemEvent.RECOGNITION_STOPPED, {});
       }
     };
+
+    // 오프라인(온디바이스) 모드 — 모델 가용성 확인 후 필요시 설치, 불가하면 온라인 폴백
+    let offline = !!this.config.processLocally;
+    if (offline) {
+      const ok = await this.#ensureLocalModel(rec.lang);
+      if (ok === false) offline = false;
+    }
+    rec.processLocally = offline;
 
     this.#rec = rec;
     this.#track = canTrack ? track : null;
@@ -121,6 +143,44 @@ export class WebSpeechProvider extends SttProvider {
     // 트랙이 있고 지원되면 트랙 입력, 아니면(마이크) 기본 start()
     if (this.#track) rec.start(this.#track);
     else rec.start();
+  }
+
+  /**
+   * 온디바이스 인식 모델(SODA 언어팩) 가용성 확인 + 필요시 설치.
+   * @returns {Promise<boolean|undefined>} false=사용 불가(온라인 폴백), true/undefined=진행
+   */
+  async #ensureLocalModel(lang) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (typeof SR.available !== 'function') return undefined; // 구버전: 그대로 진행
+
+    let status;
+    try {
+      status = await SR.available({ langs: [lang], processLocally: true });
+    } catch {
+      return undefined;
+    }
+
+    if (status === 'downloadable' || status === 'downloading') {
+      this._sink?.system(SystemEvent.MODEL_LOADING, { message: `온디바이스 모델 다운로드 중… (${lang})` });
+      try {
+        if (typeof SR.install === 'function') await SR.install({ langs: [lang], processLocally: true });
+        this._sink?.system(SystemEvent.MODEL_READY, { message: `온디바이스 모델 준비 완료 (${lang})` });
+        return true;
+      } catch (e) {
+        this._sink?.system(SystemEvent.STATUS, { message: `온디바이스 모델 설치 실패 → 온라인으로 진행`, level: 'warn' });
+        return false;
+      }
+    }
+
+    if (status === 'unavailable') {
+      this._sink?.system(SystemEvent.STATUS, {
+        message: `이 환경은 ${lang} 온디바이스 인식 미지원 → 온라인으로 진행`,
+        level: 'warn',
+      });
+      return false;
+    }
+
+    return true; // 'available'
   }
 
   async stop() {
