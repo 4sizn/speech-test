@@ -155,6 +155,13 @@ body {
   }
 }
 
+.col-left {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+}
+
 .panel {
   background: linear-gradient(180deg, var(--panel), var(--bg-2));
   border: 1px solid var(--border);
@@ -443,6 +450,145 @@ body {
 .file-del:hover {
   color: var(--error);
   border-color: var(--error);
+}
+
+/* ── 데이터셋 패널 ── */
+.dataset {
+  animation-delay: 0.04s;
+}
+.ds-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.ds-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.ds-nav .btn {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+#ds-info {
+  margin-bottom: 14px;
+}
+#ds-meta {
+  margin: -8px 0 12px;
+}
+.utt-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.utt-item .utt-pick {
+  width: 100%;
+  text-align: left;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 11px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: all 0.15s;
+}
+.utt-item .utt-pick:hover {
+  border-color: var(--border-2);
+}
+.utt-item.active .utt-pick {
+  border-color: var(--signal);
+  background: rgba(198, 255, 58, 0.08);
+}
+.utt-head {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+.utt-item[data-role='상담원'] .utt-head {
+  color: var(--signal-2);
+}
+.utt-item[data-role='고객'] .utt-head {
+  color: var(--amber);
+}
+.utt-text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── 참조(정답) 문장 박스 ── */
+.reference {
+  border: 1px dashed var(--border-2);
+  border-radius: 11px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: rgba(255, 179, 71, 0.04);
+}
+.ref-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.ref-tag {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  color: #0a0c10;
+  background: var(--amber);
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-weight: 600;
+}
+.ref-speaker {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-dim);
+}
+.ref-text {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* ── CER 결과 라인 ── */
+.line.cer .tag {
+  color: var(--amber);
+  border-color: rgba(255, 179, 71, 0.45);
+}
+.line.cer .txt {
+  font-size: 12.5px;
+  color: var(--amber);
+}
+.line.cer.good .tag,
+.line.cer.good .txt {
+  color: var(--signal);
+}
+.line.cer.good .tag {
+  border-color: rgba(198, 255, 58, 0.45);
+}
+.line.cer.bad .tag,
+.line.cer.bad .txt {
+  color: var(--error);
+}
+.line.cer.bad .tag {
+  border-color: rgba(255, 93, 93, 0.45);
 }
 
 /* ── 콘솔 ── */

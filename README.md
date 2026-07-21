@@ -125,6 +125,55 @@ export class WhisperProvider extends SttProvider {
 registry.register(WhisperProvider);
 ```
 
+## 데이터셋(독립 샘플) 붙이기 — DatasetAdapter
+
+폴더 구조·라벨 포맷이 제각각인 로컬 데이터셋을 "독립 샘플" 단위로 붙인다.
+Provider와 동일한 주입형 패턴: **데이터셋 1개 = 어댑터 1개**, UI는 정규화 모델만 안다.
+
+```
+DATASET 패널(js/ui/DatasetPanel.js)
+  → 폴더 인입: File System Access API(폴더 핸들, IndexedDB에 기억)
+              / <input webkitdirectory> 폴백 / entries 주입(테스트 시드)
+  → FileTreeIndex: 인입 경로 3종을 "상대경로→File" 인덱스로 통일 (NFC 정규화)
+  → DatasetRegistry.detect(index): 등록된 어댑터 중 해석 가능한 것을 자동 감지
+  → DatasetAdapter: listSessions() / loadSession() → 정규화 세션·발화 모델
+  → 발화 클릭 → engine.loadFile() (기존 파일 파이프라인 그대로)
+              + REF(정답 전사) 표시 + 인식 종료 시 CER(js/core/cer.js) 리포트
+```
+
+정규화 모델(어댑터가 반환해야 하는 형태 — `js/datasets/DatasetAdapter.js` 참고):
+
+```js
+Session   = { id, meta: { title, lines: string[] }, utterances: Utterance[] }
+Utterance = { id, order, speaker: { id, role, detail },
+              text /* 정규화 전사 */, textRaw, file: () => Promise<File> }
+```
+
+새 독립 샘플 추가 절차:
+
+```js
+// 1) DatasetAdapter 상속 — detect()로 폴더 규격을 식별, loadSession()에서 정규화
+export class MyDatasetAdapter extends DatasetAdapter {
+  static id = 'my-dataset';
+  static label = '내 데이터셋';
+  static detect(index) { return index.paths.some((p) => /* 규격 시그니처 */); }
+  async listSessions() { /* ... */ }
+  async loadSession(id) { /* ... */ }
+}
+// 2) 합성 루트(app.js)에서 등록만 하면 끝 — UI 수정 불필요
+datasetRegistry.register(MyDatasetAdapter);
+```
+
+현재 등록: **AihubCallCenterAdapter** (`js/datasets/adapters/AihubCallCenterAdapter.js`)
+— AI Hub 「상황별음성 상담 음성」(KtelSpeech). `라벨링데이터/**/SXXXX/SXXXX.json`(세션 메타·발화 순서)
++ 발화별 `NNNN.txt`(UTF-8 전사) + `원천데이터/**/SXXXX/NNNN.wav`(8kHz mono).
+JSON 내부 `audioPath`는 실제 배치와 달라 신뢰하지 않고 `세션ID/파일명` 접미로 wav를 역매핑한다.
+전사 태그 정규화: `(표기)/(발음)`→표기, `n/ u/ b/ o/` 제거, `아/`→`아`, `+`·`@` 제거.
+
+CER 산출 주의점(코드에 반영됨):
+- WebSpeech는 final이 `RECOGNITION_STOPPED` **이후**에 도착하기도 함 → 중지 후 1.5s 유예 수집.
+- WebSpeech 재시작 루프는 누적 중복 final을 내보냄 → 개별 final·전체 join을 후보로 최소 CER 채택.
+
 ## 알려진 제약 / TODO
 
 - **WebSpeech 파일 인식**: `start(MediaStreamTrack)`(Chrome ~M133+)으로 captureStream 트랙을 직접 인식 → 가능·노이즈/볼륨 무관(검증됨). Chromium 데스크톱 전용, 미지원 시 Whisper 폴백.

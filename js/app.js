@@ -12,16 +12,22 @@ import { WebSpeechProvider } from './providers/WebSpeechProvider.js';
 import { WhisperWasmProvider } from './providers/WhisperWasmProvider.js';
 import { StreamingAsrProvider } from './providers/StreamingAsrProvider.js';
 import { Qwen3Provider } from './providers/Qwen3Provider.js';
+import { DatasetRegistry } from './datasets/DatasetRegistry.js';
+import { AihubCallCenterAdapter } from './datasets/adapters/AihubCallCenterAdapter.js';
+import { mountDatasetPanel } from './ui/DatasetPanel.js';
 
 const $ = (id) => document.getElementById(id);
 const cfgKey = (id) => `speech-test.cfg.${id}`;
 
-// ── 1) 합성: Provider 등록 → 엔진 생성 ────────────────────────────────
+// ── 1) 합성: Provider/Dataset 어댑터 등록 → 엔진 생성 ─────────────────
 const registry = new ProviderRegistry()
   .register(WebSpeechProvider)
   .register(WhisperWasmProvider)
   .register(StreamingAsrProvider)
   .register(Qwen3Provider);
+
+// 독립 샘플(데이터셋)도 Provider와 같은 주입형 — 새 샘플은 어댑터 register 한 줄
+const datasetRegistry = new DatasetRegistry().register(AihubCallCenterAdapter);
 
 const engine = new SttEngine(registry);
 
@@ -296,19 +302,23 @@ function setInterim(text) {
   el.interim.classList.toggle('show', Boolean(text));
 }
 
-function appendFinal(text, meta) {
+function appendLine(tagText, text, className = '') {
   if (!text) return;
   const line = document.createElement('div');
-  line.className = 'line';
+  line.className = className ? `line ${className}` : 'line';
   const tag = document.createElement('span');
   tag.className = 'tag';
-  tag.textContent = `${meta.provider}·${modeLabel(meta.mode)}`;
+  tag.textContent = tagText;
   const span = document.createElement('span');
   span.className = 'txt';
   span.textContent = text;
   line.append(tag, span);
   el.transcript.appendChild(line);
   el.transcript.scrollTop = el.transcript.scrollHeight;
+}
+
+function appendFinal(text, meta) {
+  appendLine(`${meta.provider}·${modeLabel(meta.mode)}`, text);
 }
 
 function renderLevel(level) {
@@ -428,6 +438,11 @@ el.btnClear.addEventListener('click', () => {
   el.transcript.innerHTML = '';
   setInterim('');
 });
+
+// ── 데이터셋 패널 마운트 ──────────────────────────────────────────────
+const datasetPanel = mountDatasetPanel({ engine, registry: datasetRegistry, setStatus, appendLine });
+// 디버그/테스트 시드(콘솔에서 entries 주입 가능)
+window.__speechLab = { engine, datasetPanel };
 
 // ── 부트스트랩 ───────────────────────────────────────────────────────
 async function boot() {
