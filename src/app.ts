@@ -51,6 +51,7 @@ const el = {
   routing: $<HTMLDivElement>('routing'),
   sinkSelect: $<HTMLSelectElement>('sink-select'),
   sinkRefresh: $<HTMLButtonElement>('btn-sink-refresh'),
+  uploadField: $<HTMLDivElement>('upload-field'),
   dropzone: $<HTMLDivElement>('dropzone'),
   fileInput: $<HTMLInputElement>('file-input'),
   fileList: $<HTMLUListElement>('file-list'),
@@ -310,6 +311,10 @@ function modeLabel(mode: Mode | string): string {
 
 function setActiveMode(mode: Mode): void {
   for (const btn of el.modeButtons) btn.classList.toggle('active', btn.dataset.mode === mode);
+  // 오디오 업로드(드롭존·파일 목록)는 파일 계열 모드 전용 — 마이크 모드에선 숨긴다
+  const fileish = mode === Mode.FILE || mode === Mode.FILE_LOOPBACK;
+  el.uploadField.hidden = !fileish;
+  el.fileList.hidden = !fileish;
 }
 
 // 컨트롤 잠금 상태: running(인식 중) + busy(모델 로딩 등 준비 중)

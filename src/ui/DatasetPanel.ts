@@ -35,6 +35,7 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }: D
     return node as T;
   };
   const el = {
+    panel: $<HTMLElement>('dataset-panel'),
     open: $<HTMLButtonElement>('ds-open'),
     reopen: $<HTMLButtonElement>('ds-reopen'),
     dirInput: $<HTMLInputElement>('ds-dir-input'),
@@ -54,6 +55,18 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }: D
   let adapter: DatasetAdapter | null = null;
   let session: DatasetSession | null = null;
   let activeIdx = -1;
+
+  // 데이터셋 발화는 파일 모드 전용 입력 — 파일 계열 모드에서만 패널/REF를 노출한다.
+  const isFileMode = (): boolean => engine.mode === Mode.FILE || engine.mode === Mode.FILE_LOOPBACK;
+
+  function updateVisibility(): void {
+    const visible = isFileMode();
+    el.panel.hidden = !visible;
+    // 파일 모드 복귀 시 선택 중이던 발화의 REF도 복원
+    const utt = session?.utterances[activeIdx];
+    el.reference.hidden = !visible || !utt;
+    if (visible && utt) showReference(utt);
+  }
 
   // CER: 인식 시작~중지 사이의 final을 모아 참조 문장과 비교.
   // WebSpeech는 final이 RECOGNITION_STOPPED 뒤에 늦게 도착하기도 하므로
@@ -77,9 +90,12 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }: D
       finishRun(); // 유예 대기 중이던 직전 실행분 먼저 정산
       finals = [];
       refUtt = session?.utterances[activeIdx] ?? null;
-      collecting = Boolean(refUtt);
+      // 마이크 등 비파일 모드의 인식은 데이터셋 발화와 무관 → CER 수집 안 함
+      collecting = Boolean(refUtt) && isFileMode();
     } else if (m.type === SystemEvent.RECOGNITION_STOPPED && collecting) {
       graceTimer = setTimeout(finishRun, GRACE_MS);
+    } else if (m.type === SystemEvent.MODE_CHANGED || m.type === SystemEvent.PROVIDER_CHANGED) {
+      updateVisibility();
     }
   });
   engine.bus.feature((m) => {
@@ -264,6 +280,8 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }: D
   el.next.addEventListener('click', () =>
     void selectUtterance(activeIdx < 0 ? 0 : Math.min((session?.utterances.length ?? 1) - 1, activeIdx + 1)),
   );
+
+  updateVisibility(); // 초기 모드 반영 (마이크 모드면 숨김)
 
   // 재방문: 저장된 핸들이 있으면 "최근 데이터셋" 버튼 노출
   loadHandle(HANDLE_KEY)

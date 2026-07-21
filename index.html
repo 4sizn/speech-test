@@ -87,7 +87,7 @@
           </p>
         </div>
 
-        <div class="field">
+        <div class="field" id="upload-field">
           <span class="field-label">오디오 업로드</span>
           <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="오디오 파일 업로드">
             <span class="dz-icon">⬆</span>
@@ -99,8 +99,8 @@
         <ul id="file-list" class="file-list"></ul>
       </section>
 
-      <!-- ── 데이터셋 (독립 샘플 · 어댑터 자동 감지) ── -->
-      <section class="panel dataset">
+      <!-- ── 데이터셋 (독립 샘플 · 어댑터 자동 감지 · 파일 모드 전용) ── -->
+      <section class="panel dataset" id="dataset-panel">
         <div class="panel-head">
           <h2>DATASET</h2>
           <span class="hint">독립 샘플 · 어댑터 자동 감지</span>
