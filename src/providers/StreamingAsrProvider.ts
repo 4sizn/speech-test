@@ -1,6 +1,11 @@
-import { SttProvider } from '../core/SttProvider.js';
-import { AudioPcmTap, floatTo16BitPCM } from '../core/AudioPcmTap.js';
-import { SystemEvent, Mode } from '../core/events.js';
+import { SttProvider, type ConfigField, type ProviderConfig, type SttInput } from '../core/SttProvider';
+import { AudioPcmTap, floatTo16BitPCM } from '../core/AudioPcmTap';
+import { SystemEvent, Mode } from '../core/events';
+
+interface StreamingConfig extends ProviderConfig {
+  wsEndpoint?: string;
+  apiKey?: string;
+}
 
 /**
  * 클라우드 스트리밍 ASR Provider (WebSocket) — 골자.
@@ -13,25 +18,23 @@ import { SystemEvent, Mode } from '../core/events.js';
  *    아래는 "16k Int16 PCM 바이너리 전송 → {text,isFinal} JSON 수신"의 일반 골자이며,
  *    #onOpen / #send / #onMessage 를 실제 스펙에 맞춰 조정해야 한다(TODO).
  */
-export class StreamingAsrProvider extends SttProvider {
-  static id = 'streaming';
-  static label = 'Cloud Streaming ASR (WebSocket)';
-  static capabilities = [Mode.FILE, Mode.MIC];
-  static configSchema = [
+export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
+  static override readonly id = 'streaming';
+  static override readonly label = 'Cloud Streaming ASR (WebSocket)';
+  static override readonly capabilities: readonly Mode[] = [Mode.FILE, Mode.MIC];
+  static override readonly configSchema: readonly ConfigField[] = [
     { key: 'wsEndpoint', label: 'WebSocket URL', placeholder: 'wss://...' },
     { key: 'apiKey', label: 'API Key', type: 'password', placeholder: '(필요 시)' },
   ];
 
-  static isSupported() {
+  static override isSupported(): boolean {
     return typeof WebSocket !== 'undefined';
   }
 
-  /** @type {WebSocket|null} */
-  #ws = null;
-  /** @type {AudioPcmTap|null} */
-  #tap = null;
+  #ws: WebSocket | null = null;
+  #tap: AudioPcmTap | null = null;
 
-  async start(input) {
+  async start(input: SttInput): Promise<void> {
     if (!this.config.wsEndpoint) {
       this._sink?.system(SystemEvent.STATUS, { message: 'Streaming 미설정 — WebSocket URL 필요', level: 'warn' });
       this._sink?.error(new Error('Streaming ASR이 설정되지 않았습니다'));
@@ -49,7 +52,9 @@ export class StreamingAsrProvider extends SttProvider {
       this.#ws.onopen = () => this.#onOpen(input.lang);
       this.#ws.onmessage = (e) => this.#onMessage(e);
       this.#ws.onerror = () => this._sink?.error(new Error('WebSocket 에러'));
-      this.#ws.onclose = () => this._active && this._sink?.system(SystemEvent.STATUS, { message: 'WebSocket 종료됨' });
+      this.#ws.onclose = () => {
+        if (this._active) this._sink?.system(SystemEvent.STATUS, { message: 'WebSocket 종료됨' });
+      };
     } catch (err) {
       this._sink?.error(err instanceof Error ? err : new Error(String(err)));
       return;
@@ -67,7 +72,7 @@ export class StreamingAsrProvider extends SttProvider {
     this._sink?.system(SystemEvent.STATUS, { message: 'Streaming ASR 전송 중…' });
   }
 
-  async stop() {
+  override async stop(): Promise<void> {
     this._active = false;
     await this.#tap?.stop();
     this.#tap = null;
@@ -81,23 +86,23 @@ export class StreamingAsrProvider extends SttProvider {
   }
 
   // ── 벤더별로 조정할 지점 ──────────────────────────────────────────
-  #onOpen(lang) {
+  #onOpen(lang: string | undefined): void {
     // TODO: 핸드셰이크/설정 프레임 전송 (샘플레이트/언어/인증 등)
     const init = { type: 'start', sampleRate: 16000, language: lang, apiKey: this.config.apiKey || undefined };
     this.#ws?.send(JSON.stringify(init));
   }
 
-  #send(arrayBuffer) {
+  #send(arrayBuffer: ArrayBuffer): void {
     // TODO: 벤더가 base64/JSON 래핑을 요구하면 여기서 변환
     this.#ws?.send(arrayBuffer);
   }
 
-  #onMessage(event) {
+  #onMessage(event: MessageEvent): void {
     // TODO: 응답 스키마에 맞게 파싱
     try {
       const data = JSON.parse(typeof event.data === 'string' ? event.data : '');
-      const text = data.text ?? data.transcript ?? data.channel?.alternatives?.[0]?.transcript ?? '';
-      const isFinal = data.isFinal ?? data.is_final ?? data.type === 'final';
+      const text: unknown = data.text ?? data.transcript ?? data.channel?.alternatives?.[0]?.transcript ?? '';
+      const isFinal: boolean = Boolean(data.isFinal ?? data.is_final ?? data.type === 'final');
       if (!text) return;
       if (isFinal) this._sink?.final(String(text).trim());
       else this._sink?.partial(String(text).trim());

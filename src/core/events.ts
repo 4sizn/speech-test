@@ -6,19 +6,21 @@
  *
  *  - system  : 연결/초기화/생명주기/상태 등 인프라성 이벤트 (시스템 이벤트 호출)
  *  - feature : STT 도메인의 산출물(부분/최종 인식 결과) (기능 이벤트 호출)
+ *
+ * `as const` 객체 + 파생 유니언 타입 패턴이라 값과 타입을 같은 이름으로 쓴다.
  */
 
-/** @enum {string} */
-export const EventCategory = Object.freeze({
+export const EventCategory = {
   SYSTEM: 'system',
   FEATURE: 'feature',
-});
+} as const;
+export type EventCategory = (typeof EventCategory)[keyof typeof EventCategory];
 
 /**
  * 시스템 이벤트 호출 — 엔진/Provider/오디오의 생명주기·상태.
  * 도메인 결과가 아니라 "지금 무슨 상태인가"를 알린다.
  */
-export const SystemEvent = Object.freeze({
+export const SystemEvent = {
   ENGINE_READY: 'system.engine.ready',
   PROVIDER_CHANGED: 'system.engine.provider-changed',
   MODE_CHANGED: 'system.engine.mode-changed',
@@ -38,21 +40,24 @@ export const SystemEvent = Object.freeze({
   AUDIO_LEVEL: 'system.audio.level',
 
   STATUS: 'system.status',
-});
+} as const;
+export type SystemEvent = (typeof SystemEvent)[keyof typeof SystemEvent];
 
 /**
  * 기능 이벤트 호출 — STT 도메인 산출물.
  * Provider가 무엇으로 구현됐든(브라우저/클라우드) 동일한 기능 이벤트로 흘러나온다.
  */
-export const FeatureEvent = Object.freeze({
+export const FeatureEvent = {
   TRANSCRIPT_PARTIAL: 'feature.stt.transcript.partial', // 인식 중(interim)
   TRANSCRIPT_FINAL: 'feature.stt.transcript.final', // 확정(final)
   TRANSCRIPT_RESET: 'feature.stt.transcript.reset',
-});
+} as const;
+export type FeatureEvent = (typeof FeatureEvent)[keyof typeof FeatureEvent];
 
 /** 인식 입력 모드. Provider는 capabilities로 지원 모드를 선언한다. */
-export const Mode = Object.freeze({
+export const Mode = {
   MIC: 'mic', // 마이크 실시간
   FILE: 'file', // 업로드 파일 (클라우드 ASR 등)
   FILE_LOOPBACK: 'file-loopback', // 스피커 재생음을 마이크로 되받는 실험 모드
-});
+} as const;
+export type Mode = (typeof Mode)[keyof typeof Mode];

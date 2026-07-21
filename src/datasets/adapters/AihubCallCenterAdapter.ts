@@ -1,4 +1,30 @@
-import { DatasetAdapter } from '../DatasetAdapter.js';
+import { DatasetAdapter, type DatasetSession, type SessionSummary, type SpeakerInfo, type Utterance } from '../DatasetAdapter';
+import type { FileTreeIndex } from '../FileTreeIndex';
+
+/** AI Hub 라벨 JSON의 이 코드가 쓰는 표면. */
+interface AihubLabelJson {
+  dataSet?: {
+    version?: string;
+    date?: string;
+    typeInfo?: {
+      category?: string;
+      subcategory?: string;
+      inputType?: string;
+      speakers?: Array<{
+        id: string;
+        gender?: string;
+        type?: string;
+        age?: string;
+        residence?: string;
+      }>;
+    };
+    dialogs?: Array<{
+      speaker: string;
+      audioPath?: string;
+      textPath?: string;
+    }>;
+  };
+}
 
 /**
  * AI Hub 「상황별음성(상담 음성)」 데이터셋 어댑터.
@@ -19,22 +45,24 @@ import { DatasetAdapter } from '../DatasetAdapter.js';
  *   @이름          개인정보 가명    → '@'만 제거
  */
 export class AihubCallCenterAdapter extends DatasetAdapter {
-  static id = 'aihub-call-center';
-  static label = 'AI Hub 상담 음성 (KtelSpeech)';
+  static override readonly id = 'aihub-call-center';
+  static override readonly label = 'AI Hub 상담 음성 (KtelSpeech)';
 
-  static #SESSION_RE = /(?:^|\/)라벨링데이터\/.*\/(S\d+)\/\1\.json$/;
+  static readonly #SESSION_RE = /(?:^|\/)라벨링데이터\/.*\/(S\d+)\/\1\.json$/;
 
-  static detect(index) {
+  static override detect(index: FileTreeIndex): boolean {
     return index.paths.some((p) => AihubCallCenterAdapter.#SESSION_RE.test(p));
   }
 
-  /** @type {Map<string, {jsonPath:string, dir:string}>|null} sessionId → 라벨 위치 */
-  #sessions = null;
-  /** @type {Map<string, string>|null} "세션ID/파일명.wav" → 실제 경로 */
-  #wavBySuffix = null;
+  /** sessionId → 라벨 위치 */
+  #sessions: Map<string, { jsonPath: string; dir: string }> | null = null;
+  /** "세션ID/파일명.wav" → 실제 경로 */
+  #wavBySuffix: Map<string, string> | null = null;
 
-  #scan() {
-    if (this.#sessions) return;
+  #scan(): { sessions: Map<string, { jsonPath: string; dir: string }>; wavBySuffix: Map<string, string> } {
+    if (this.#sessions && this.#wavBySuffix) {
+      return { sessions: this.#sessions, wavBySuffix: this.#wavBySuffix };
+    }
     this.#sessions = new Map();
     this.#wavBySuffix = new Map();
     for (const p of this.index.paths) {
@@ -48,11 +76,12 @@ export class AihubCallCenterAdapter extends DatasetAdapter {
         if (seg.length >= 2) this.#wavBySuffix.set(seg.slice(-2).join('/'), p);
       }
     }
+    return { sessions: this.#sessions, wavBySuffix: this.#wavBySuffix };
   }
 
-  async listSessions() {
-    this.#scan();
-    return [...this.#sessions.entries()]
+  async listSessions(): Promise<SessionSummary[]> {
+    const { sessions } = this.#scan();
+    return [...sessions.entries()]
       .map(([id, { dir }]) => {
         const prefix = `${dir}/`;
         const count = this.index.paths.filter((p) => p.startsWith(prefix) && p.endsWith('.txt')).length;
@@ -61,16 +90,16 @@ export class AihubCallCenterAdapter extends DatasetAdapter {
       .sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  async loadSession(sessionId) {
-    this.#scan();
-    const loc = this.#sessions.get(sessionId);
+  async loadSession(sessionId: string): Promise<DatasetSession> {
+    const { sessions, wavBySuffix } = this.#scan();
+    const loc = sessions.get(sessionId);
     if (!loc) throw new Error(`세션을 찾을 수 없습니다: ${sessionId}`);
 
-    const json = await this.index.readJson(loc.jsonPath);
+    const json = await this.index.readJson<AihubLabelJson>(loc.jsonPath);
     const info = json?.dataSet?.typeInfo ?? {};
     const dialogs = json?.dataSet?.dialogs ?? [];
 
-    const speakers = new Map(
+    const speakers = new Map<string, SpeakerInfo>(
       (info.speakers ?? []).map((s) => [
         s.id,
         { id: s.id, role: s.type || '화자', detail: [s.gender, s.age, s.residence].filter(Boolean).join('·') },
@@ -79,10 +108,10 @@ export class AihubCallCenterAdapter extends DatasetAdapter {
 
     let missing = 0;
     const utterances = await Promise.all(
-      dialogs.map(async (d, i) => {
-        const base = (d.audioPath || '').split('/').pop(); // '0001.wav'
+      dialogs.map(async (d, i): Promise<Utterance | null> => {
+        const base = (d.audioPath || '').split('/').pop() ?? ''; // '0001.wav'
         const uttId = base.replace(/\.wav$/i, '');
-        const wavPath = this.#wavBySuffix.get(`${sessionId}/${base}`);
+        const wavPath = wavBySuffix.get(`${sessionId}/${base}`);
         const txtPath = `${loc.dir}/${uttId}.txt`;
         if (!wavPath || !this.index.has(txtPath)) {
           missing++;
@@ -112,13 +141,13 @@ export class AihubCallCenterAdapter extends DatasetAdapter {
         title: `${info.category ?? ''}${info.subcategory && info.subcategory !== info.category ? `/${info.subcategory}` : ''}`,
         lines: [speakerLine, `입력: ${info.inputType ?? '?'} · 수집일: ${json?.dataSet?.date ?? '?'}`].filter(Boolean),
       },
-      utterances: utterances.filter(Boolean),
+      utterances: utterances.filter((u): u is Utterance => u !== null),
     };
   }
 }
 
 /** 전사 원문 → 표시/평가용 문장(철자 표기 기준). */
-export function normalizeAihubText(raw) {
+export function normalizeAihubText(raw: string | null | undefined): string {
   return (raw || '')
     .replace(/\(([^)]*)\)\/\(([^)]*)\)/g, '$1') // 이중 전사 → 철자 표기
     .replace(/(^|\s)[a-z]+\//g, '$1') // n/ u/ b/ o/ 등 태그 제거

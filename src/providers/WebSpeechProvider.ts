@@ -1,5 +1,13 @@
-import { SttProvider } from '../core/SttProvider.js';
-import { SystemEvent, Mode } from '../core/events.js';
+import { SttProvider, type ConfigField, type ProviderConfig, type SttInput } from '../core/SttProvider';
+import { SystemEvent, Mode } from '../core/events';
+
+interface WebSpeechConfig extends ProviderConfig {
+  processLocally?: boolean;
+}
+
+function getSR(): SpeechRecognitionStatic | undefined {
+  return window.SpeechRecognition || window.webkitSpeechRecognition;
+}
 
 /**
  * 브라우저 Web Speech API(SpeechRecognition) Provider.
@@ -15,13 +23,13 @@ import { SystemEvent, Mode } from '../core/events.js';
  *
  * Chromium 데스크톱(Chrome/Edge, ~M133+) 전용. 미지원 환경은 파일 모드에서 안내 후 폴백 권장.
  */
-export class WebSpeechProvider extends SttProvider {
-  static id = 'webspeech';
-  static label = 'Browser Web Speech API';
-  static capabilities = [Mode.MIC, Mode.FILE];
+export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
+  static override readonly id = 'webspeech';
+  static override readonly label = 'Browser Web Speech API';
+  static override readonly capabilities: readonly Mode[] = [Mode.MIC, Mode.FILE];
   // 파일 트랙을 captureStream으로 디지털 캡처해 start(track)로 주입 (음향 루프백 폐기)
-  static fileInputKind = 'stream';
-  static configSchema = [
+  static override readonly fileInputKind = 'stream';
+  static override readonly configSchema: readonly ConfigField[] = [
     {
       key: 'processLocally',
       label: '오프라인(온디바이스) 인식 — 서버 전송 없이 로컬 처리',
@@ -30,34 +38,37 @@ export class WebSpeechProvider extends SttProvider {
     },
   ];
 
-  static isSupported() {
-    return typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  static override isSupported(): boolean {
+    return typeof window !== 'undefined' && Boolean(getSR());
   }
 
   /** start(MediaStreamTrack) 오버로드 지원 여부(런타임 1회 탐지, 캐시). */
-  static supportsAudioTrackInput() {
-    if (this._trackInput !== undefined) return this._trackInput;
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return (this._trackInput = false);
+  static #trackInput: boolean | undefined;
+  static supportsAudioTrackInput(): boolean {
+    if (this.#trackInput !== undefined) return this.#trackInput;
+    const SR = getSR();
+    if (!SR) return (this.#trackInput = false);
     try {
       // 오버로드가 있으면 {}→MediaStreamTrack 변환 실패로 TypeError(시작 안 됨).
       // 없으면 여분 인자 무시되어 마이크로 시작 → 즉시 abort.
       const rec = new SR();
       rec.start({});
-      try { rec.abort(); } catch {}
-      return (this._trackInput = false);
+      try {
+        rec.abort();
+      } catch {
+        /* noop */
+      }
+      return (this.#trackInput = false);
     } catch (e) {
-      return (this._trackInput = e?.name === 'TypeError');
+      return (this.#trackInput = e instanceof Error && e.name === 'TypeError');
     }
   }
 
-  /** @type {any} */
-  #rec = null;
-  /** @type {MediaStreamTrack|null} */
-  #track = null;
+  #rec: SpeechRecognition | null = null;
+  #track: MediaStreamTrack | null = null;
 
-  async start(input) {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  async start(input: SttInput): Promise<void> {
+    const SR = getSR();
     if (!SR) {
       this._sink?.error(new Error('이 브라우저는 Web Speech API를 지원하지 않습니다 (Chrome/Edge 권장)'));
       return;
@@ -119,7 +130,8 @@ export class WebSpeechProvider extends SttProvider {
       // continuous 인식은 브라우저가 주기적으로 끊으므로, 활성 + 트랙 live + 치명적에러 아님이면 자동 재시작
       if (this._active && !fatal && (!this.#track || this.#track.readyState === 'live')) {
         try {
-          this.#track ? rec.start(this.#track) : rec.start();
+          if (this.#track) rec.start(this.#track);
+          else rec.start();
         } catch {
           /* 이미 시작/트랙 종료 */
         }
@@ -129,7 +141,7 @@ export class WebSpeechProvider extends SttProvider {
     };
 
     // 오프라인(온디바이스) 모드 — 모델 가용성 확인 후 필요시 설치, 불가하면 온라인 폴백
-    let offline = !!this.config.processLocally;
+    let offline = Boolean(this.config.processLocally);
     if (offline) {
       const ok = await this.#ensureLocalModel(rec.lang);
       if (ok === false) offline = false;
@@ -147,13 +159,13 @@ export class WebSpeechProvider extends SttProvider {
 
   /**
    * 온디바이스 인식 모델(SODA 언어팩) 가용성 확인 + 필요시 설치.
-   * @returns {Promise<boolean|undefined>} false=사용 불가(온라인 폴백), true/undefined=진행
+   * @returns false=사용 불가(온라인 폴백), true/undefined=진행
    */
-  async #ensureLocalModel(lang) {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (typeof SR.available !== 'function') return undefined; // 구버전: 그대로 진행
+  async #ensureLocalModel(lang: string): Promise<boolean | undefined> {
+    const SR = getSR();
+    if (!SR || typeof SR.available !== 'function') return undefined; // 구버전: 그대로 진행
 
-    let status;
+    let status: Awaited<ReturnType<NonNullable<SpeechRecognitionStatic['available']>>>;
     try {
       status = await SR.available({ langs: [lang], processLocally: true });
     } catch {
@@ -166,7 +178,7 @@ export class WebSpeechProvider extends SttProvider {
         if (typeof SR.install === 'function') await SR.install({ langs: [lang], processLocally: true });
         this._sink?.system(SystemEvent.MODEL_READY, { message: `온디바이스 모델 준비 완료 (${lang})` });
         return true;
-      } catch (e) {
+      } catch {
         this._sink?.system(SystemEvent.STATUS, { message: `온디바이스 모델 설치 실패 → 온라인으로 진행`, level: 'warn' });
         return false;
       }
@@ -183,7 +195,7 @@ export class WebSpeechProvider extends SttProvider {
     return true; // 'available'
   }
 
-  async stop() {
+  override async stop(): Promise<void> {
     this._active = false;
     try {
       this.#rec?.stop();

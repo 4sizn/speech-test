@@ -1,3 +1,6 @@
+import type { DatasetAdapter, DatasetAdapterClass } from './DatasetAdapter';
+import type { FileTreeIndex } from './FileTreeIndex';
+
 /**
  * 데이터셋 어댑터 레지스트리.
  *
@@ -6,23 +9,19 @@
  * 새 "독립 샘플"은 어댑터 클래스 하나 만들어 register()만 추가하면 된다.
  */
 export class DatasetRegistry {
-  /** @type {Array<typeof import('./DatasetAdapter.js').DatasetAdapter>} */
-  #adapters = [];
+  #adapters: DatasetAdapterClass[] = [];
 
-  register(AdapterClass) {
+  register(AdapterClass: DatasetAdapterClass): this {
     this.#adapters.push(AdapterClass);
     return this;
   }
 
-  list() {
+  list(): Array<{ id: string; label: string }> {
     return this.#adapters.map((A) => ({ id: A.id, label: A.label }));
   }
 
-  /**
-   * 인덱스를 해석할 수 있는 첫 어댑터의 인스턴스를 반환. 없으면 null.
-   * @param {import('./FileTreeIndex.js').FileTreeIndex} index
-   */
-  detect(index) {
+  /** 인덱스를 해석할 수 있는 첫 어댑터의 인스턴스를 반환. 없으면 null. */
+  detect(index: FileTreeIndex): DatasetAdapter | null {
     for (const A of this.#adapters) {
       try {
         if (A.detect(index)) return new A(index);

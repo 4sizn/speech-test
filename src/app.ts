@@ -5,19 +5,26 @@
  * 그 외 모든 코드는 추상화(SttProvider/SttEngine/EventBus)에만 의존한다.
  * Provider 설정 폼은 각 Provider의 static configSchema를 보고 자동 렌더한다(하드코딩 없음).
  */
-import { ProviderRegistry } from './core/ProviderRegistry.js';
-import { SttEngine } from './core/SttEngine.js';
-import { SystemEvent, FeatureEvent, Mode } from './core/events.js';
-import { WebSpeechProvider } from './providers/WebSpeechProvider.js';
-import { WhisperWasmProvider } from './providers/WhisperWasmProvider.js';
-import { StreamingAsrProvider } from './providers/StreamingAsrProvider.js';
-import { Qwen3Provider } from './providers/Qwen3Provider.js';
-import { DatasetRegistry } from './datasets/DatasetRegistry.js';
-import { AihubCallCenterAdapter } from './datasets/adapters/AihubCallCenterAdapter.js';
-import { mountDatasetPanel } from './ui/DatasetPanel.js';
+import { ProviderRegistry } from './core/ProviderRegistry';
+import { SttEngine } from './core/SttEngine';
+import { SystemEvent, FeatureEvent, Mode } from './core/events';
+import type { ConfigField, ProviderConfig } from './core/SttProvider';
+import type { ProviderMeta } from './core/ProviderRegistry';
+import { WebSpeechProvider } from './providers/WebSpeechProvider';
+import { WhisperWasmProvider } from './providers/WhisperWasmProvider';
+import { StreamingAsrProvider } from './providers/StreamingAsrProvider';
+import { Qwen3Provider } from './providers/Qwen3Provider';
+import { DatasetRegistry } from './datasets/DatasetRegistry';
+import { AihubCallCenterAdapter } from './datasets/adapters/AihubCallCenterAdapter';
+import { mountDatasetPanel } from './ui/DatasetPanel';
+import { showToast } from './ui/toast';
 
-const $ = (id) => document.getElementById(id);
-const cfgKey = (id) => `speech-test.cfg.${id}`;
+const $ = <T extends HTMLElement>(id: string): T => {
+  const node = document.getElementById(id);
+  if (!node) throw new Error(`#${id} 엘리먼트가 없습니다`);
+  return node as T;
+};
+const cfgKey = (id: string) => `speech-test.cfg.${id}`;
 
 // ── 1) 합성: Provider/Dataset 어댑터 등록 → 엔진 생성 ─────────────────
 const registry = new ProviderRegistry()
@@ -36,31 +43,31 @@ const META = new Map(registry.list().map((m) => [m.id, m]));
 
 // ── DOM ────────────────────────────────────────────────────────────────
 const el = {
-  providerSelect: $('provider-select'),
-  capabilityHint: $('capability-hint'),
-  modeButtons: [...document.querySelectorAll('[data-mode]')],
-  langSelect: $('lang-select'),
-  settings: $('provider-settings'),
-  routing: $('routing'),
-  sinkSelect: $('sink-select'),
-  sinkRefresh: $('btn-sink-refresh'),
-  dropzone: $('dropzone'),
-  fileInput: $('file-input'),
-  fileList: $('file-list'),
-  audio: $('audio'),
-  btnStart: $('btn-start'),
-  btnStop: $('btn-stop'),
-  btnClear: $('btn-clear'),
-  transcript: $('transcript'),
-  interim: $('interim'),
-  statusText: $('status-text'),
-  signal: $('signal'),
-  meter: $('level-meter'),
-  secureBanner: $('secure-banner'),
+  providerSelect: $<HTMLSelectElement>('provider-select'),
+  capabilityHint: $<HTMLParagraphElement>('capability-hint'),
+  modeButtons: [...document.querySelectorAll<HTMLButtonElement>('[data-mode]')],
+  langSelect: $<HTMLSelectElement>('lang-select'),
+  settings: $<HTMLFormElement>('provider-settings'),
+  routing: $<HTMLDivElement>('routing'),
+  sinkSelect: $<HTMLSelectElement>('sink-select'),
+  sinkRefresh: $<HTMLButtonElement>('btn-sink-refresh'),
+  dropzone: $<HTMLDivElement>('dropzone'),
+  fileInput: $<HTMLInputElement>('file-input'),
+  fileList: $<HTMLUListElement>('file-list'),
+  audio: $<HTMLAudioElement>('audio'),
+  btnStart: $<HTMLButtonElement>('btn-start'),
+  btnStop: $<HTMLButtonElement>('btn-stop'),
+  btnClear: $<HTMLButtonElement>('btn-clear'),
+  transcript: $<HTMLDivElement>('transcript'),
+  interim: $<HTMLDivElement>('interim'),
+  statusText: $<HTMLSpanElement>('status-text'),
+  signal: $<HTMLSpanElement>('signal'),
+  meter: $<HTMLDivElement>('level-meter'),
+  secureBanner: $<HTMLDivElement>('secure-banner'),
 };
 
 // 레벨 미터 막대
-const bars = [];
+const bars: HTMLSpanElement[] = [];
 for (let i = 0; i < 28; i++) {
   const b = document.createElement('span');
   b.className = 'bar';
@@ -70,18 +77,18 @@ for (let i = 0; i < 28; i++) {
 
 // 파일 목록 상태
 let fileSeq = 0;
-let activeFileId = null;
-const files = new Map();
+let activeFileId: string | null = null;
+const files = new Map<string, File>();
 
 // ── 2) Provider 설정 영속화(localStorage) ─────────────────────────────
-function defaultsFor(schema = []) {
-  const d = {};
+function defaultsFor(schema: readonly ConfigField[] = []): ProviderConfig {
+  const d: ProviderConfig = {};
   for (const f of schema) if (f.default !== undefined) d[f.key] = f.default;
   return d;
 }
-function loadCfg(id) {
+function loadCfg(id: string): ProviderConfig {
   const schema = META.get(id)?.configSchema || [];
-  let saved = {};
+  let saved: ProviderConfig = {};
   try {
     saved = JSON.parse(localStorage.getItem(cfgKey(id)) || '{}');
   } catch {
@@ -89,7 +96,7 @@ function loadCfg(id) {
   }
   return { ...defaultsFor(schema), ...saved };
 }
-function saveCfg(id, obj) {
+function saveCfg(id: string, obj: ProviderConfig): void {
   localStorage.setItem(cfgKey(id), JSON.stringify(obj));
 }
 
@@ -105,11 +112,21 @@ engine.bus.system((m) => {
     case SystemEvent.MODE_CHANGED:
       setActiveMode(m.payload.mode);
       break;
-    case SystemEvent.MODEL_LOADING:
-      setStatus(`모델 로딩 중… (${m.payload.model})`, 'warn');
+    case SystemEvent.MODEL_LOADING: {
+      // 모델 로딩 중에는 인식이 불가능 → 문제될 컨트롤 비활성화 + 토스트 안내
+      setBusy(true);
+      const what = m.payload.model ?? m.payload.message ?? '';
+      setStatus(`모델 로딩 중… ${what ? `(${what})` : ''}`, 'warn');
+      showToast(`모델 로딩 중${what ? ` — ${what}` : ''}\n완료 전까지 인식을 시작할 수 없습니다`, {
+        kind: 'warn',
+        duration: 5000,
+      });
       break;
+    }
     case SystemEvent.MODEL_READY:
-      setStatus(`모델 준비 완료 (${m.payload.model})`, 'ok');
+      setBusy(false);
+      setStatus(`모델 준비 완료 (${m.payload.model ?? ''})`, 'ok');
+      showToast('모델 준비 완료 — 인식을 진행합니다', { kind: 'ok' });
       break;
     case SystemEvent.RECOGNITION_STARTED:
       setRunning(true);
@@ -117,9 +134,14 @@ engine.bus.system((m) => {
       break;
     case SystemEvent.RECOGNITION_STOPPED:
       setRunning(false);
+      setBusy(false); // 로딩 중 중지(탈출구)로 끝난 경우도 컨트롤 복구
       setStatus('대기 중', 'idle');
       break;
     case SystemEvent.RECOGNITION_ERROR:
+      if (busy) {
+        setBusy(false);
+        showToast(`모델 로딩 실패: ${m.payload.message}`, { kind: 'error', duration: 6000 });
+      }
       setStatus(`에러: ${m.payload.message}`, 'error');
       break;
     case SystemEvent.AUDIO_LOADED:
@@ -150,7 +172,7 @@ engine.bus.feature((m) => {
 });
 
 // ── 렌더 헬퍼 ────────────────────────────────────────────────────────
-function populateProviders(list) {
+function populateProviders(list: ProviderMeta[]): void {
   el.providerSelect.innerHTML = '';
   for (const p of list) {
     const opt = document.createElement('option');
@@ -161,15 +183,20 @@ function populateProviders(list) {
   }
 }
 
-function reflectProvider({ provider, label, capabilities, configSchema, fileInputKind, mode }) {
+interface ProviderChangedPayload {
+  provider: string;
+  label: string;
+  capabilities: readonly Mode[];
+  configSchema: readonly ConfigField[];
+  fileInputKind: string;
+  mode: Mode;
+}
+
+function reflectProvider({ provider, label, capabilities, configSchema, fileInputKind, mode }: ProviderChangedPayload): void {
   el.providerSelect.value = provider;
-  for (const btn of el.modeButtons) {
-    const supported = capabilities.includes(btn.dataset.mode);
-    btn.disabled = !supported;
-    btn.classList.toggle('unavailable', !supported);
-  }
+  applyControls();
   setActiveMode(mode);
-  el.capabilityHint.textContent = `지원 모드: ${capabilities.map(modeLabel).join(' · ')}`;
+  el.capabilityHint.textContent = `지원 모드: ${capabilities.map((c) => modeLabel(c)).join(' · ')}`;
   renderSettings(provider, label, configSchema);
   // WebSpeech처럼 파일을 음향 루프백으로만 받는 Provider는 디지털 라우팅 UI 노출
   el.routing.hidden = fileInputKind !== 'loopback';
@@ -177,8 +204,8 @@ function reflectProvider({ provider, label, capabilities, configSchema, fileInpu
 }
 
 /** 출력 장치 목록을 채운다(가상장치 선택용). */
-async function populateSinks() {
-  let devices = [];
+async function populateSinks(): Promise<void> {
+  let devices: MediaDeviceInfo[] = [];
   try {
     devices = await navigator.mediaDevices.enumerateDevices();
   } catch {
@@ -196,7 +223,7 @@ async function populateSinks() {
   if (prev) el.sinkSelect.value = prev;
 }
 
-function renderSettings(providerId, label, schema = []) {
+function renderSettings(providerId: string, label: string, schema: readonly ConfigField[] = []): void {
   el.settings.innerHTML = '';
   if (!schema.length) {
     el.settings.hidden = true;
@@ -210,10 +237,10 @@ function renderSettings(providerId, label, schema = []) {
   legend.textContent = `${label} 설정`;
   el.settings.appendChild(legend);
 
-  const collect = () => {
-    const values = {};
+  const collect = (): ProviderConfig => {
+    const values: ProviderConfig = {};
     for (const f of schema) {
-      const node = $(`cfg-${f.key}`);
+      const node = $<HTMLInputElement>(`cfg-${f.key}`);
       values[f.key] = f.type === 'checkbox' ? node.checked : node.value.trim();
     }
     return values;
@@ -226,7 +253,7 @@ function renderSettings(providerId, label, schema = []) {
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.id = `cfg-${f.key}`;
-      cb.checked = !!cfg[f.key];
+      cb.checked = Boolean(cfg[f.key]);
       const span = document.createElement('span');
       span.textContent = f.label;
       // 토글 즉시 적용(저장 버튼 없이)
@@ -250,7 +277,7 @@ function renderSettings(providerId, label, schema = []) {
     input.id = `cfg-${f.key}`;
     input.type = f.type || 'text';
     input.placeholder = f.placeholder || '';
-    input.value = cfg[f.key] ?? '';
+    input.value = String(cfg[f.key] ?? '');
     if (f.type === 'password') input.autocomplete = 'new-password';
     wrap.append(name, input);
     el.settings.appendChild(wrap);
@@ -277,32 +304,55 @@ function renderSettings(providerId, label, schema = []) {
   el.settings.appendChild(note);
 }
 
-function modeLabel(mode) {
+function modeLabel(mode: Mode | string): string {
   return { [Mode.MIC]: '마이크', [Mode.FILE]: '파일', [Mode.FILE_LOOPBACK]: '파일(루프백)' }[mode] || mode;
 }
 
-function setActiveMode(mode) {
+function setActiveMode(mode: Mode): void {
   for (const btn of el.modeButtons) btn.classList.toggle('active', btn.dataset.mode === mode);
 }
 
-function setRunning(running) {
-  el.signal.classList.toggle('live', running);
-  el.btnStart.disabled = running;
-  el.btnStop.disabled = !running;
-  el.dropzone.classList.toggle('locked', running);
+// 컨트롤 잠금 상태: running(인식 중) + busy(모델 로딩 등 준비 중)
+let running = false;
+let busy = false;
+
+/** running/busy/Provider capabilities를 종합해 컨트롤 활성 상태를 일괄 반영한다. */
+function applyControls(): void {
+  el.btnStart.disabled = running || busy;
+  el.btnStop.disabled = !(running || busy); // busy 중에도 중지는 탈출구로 열어둔다
+  el.dropzone.classList.toggle('locked', running || busy);
+  el.providerSelect.disabled = busy;
+  el.langSelect.disabled = busy;
+  for (const btn of el.modeButtons) {
+    const supported = (engine.provider?.capabilities ?? []).includes(btn.dataset.mode as Mode);
+    btn.disabled = busy || !supported;
+    btn.classList.toggle('unavailable', !supported);
+  }
 }
 
-function setStatus(text, kind = 'idle') {
+function setRunning(next: boolean): void {
+  running = next;
+  el.signal.classList.toggle('live', next);
+  applyControls();
+}
+
+function setBusy(next: boolean): void {
+  if (busy === next) return;
+  busy = next;
+  applyControls();
+}
+
+function setStatus(text: string, kind = 'idle'): void {
   el.statusText.textContent = text;
   el.statusText.dataset.kind = kind;
 }
 
-function setInterim(text) {
+function setInterim(text: string): void {
   el.interim.textContent = text;
   el.interim.classList.toggle('show', Boolean(text));
 }
 
-function appendLine(tagText, text, className = '') {
+function appendLine(tagText: string, text: string, className = ''): void {
   if (!text) return;
   const line = document.createElement('div');
   line.className = className ? `line ${className}` : 'line';
@@ -317,11 +367,11 @@ function appendLine(tagText, text, className = '') {
   el.transcript.scrollTop = el.transcript.scrollHeight;
 }
 
-function appendFinal(text, meta) {
-  appendLine(`${meta.provider}·${modeLabel(meta.mode)}`, text);
+function appendFinal(text: string, meta: { provider?: string; mode?: Mode }): void {
+  appendLine(`${meta.provider}·${modeLabel(meta.mode ?? '')}`, text);
 }
 
-function renderLevel(level) {
+function renderLevel(level: number): void {
   const n = bars.length;
   for (let i = 0; i < n; i++) {
     const dist = Math.abs(i - (n - 1) / 2) / (n / 2);
@@ -331,7 +381,7 @@ function renderLevel(level) {
 }
 
 // ── 파일 업로드 / 목록 ───────────────────────────────────────────────
-function addFiles(fileListLike) {
+function addFiles(fileListLike: Iterable<File>): void {
   for (const f of fileListLike) {
     if (!f.type.startsWith('audio/')) continue;
     const id = `f${++fileSeq}`;
@@ -340,7 +390,7 @@ function addFiles(fileListLike) {
   }
 }
 
-function renderFileItem(id, file) {
+function renderFileItem(id: string, file: File): void {
   const item = document.createElement('li');
   item.className = 'file-item';
   item.dataset.id = id;
@@ -350,41 +400,44 @@ function renderFileItem(id, file) {
       <span class="file-meta"></span>
     </button>
     <button class="file-del" type="button" title="삭제">✕</button>`;
-  item.querySelector('.file-name').textContent = file.name;
-  item.querySelector('.file-meta').textContent = `${(file.size / 1024).toFixed(0)} KB · ${file.type || 'audio'}`;
-  item.querySelector('.file-pick').addEventListener('click', () => selectFile(id));
-  item.querySelector('.file-del').addEventListener('click', () => removeFile(id));
+  item.querySelector<HTMLSpanElement>('.file-name')!.textContent = file.name;
+  item.querySelector<HTMLSpanElement>('.file-meta')!.textContent =
+    `${(file.size / 1024).toFixed(0)} KB · ${file.type || 'audio'}`;
+  item.querySelector<HTMLButtonElement>('.file-pick')!.addEventListener('click', () => selectFile(id));
+  item.querySelector<HTMLButtonElement>('.file-del')!.addEventListener('click', () => removeFile(id));
   el.fileList.appendChild(item);
   if (!activeFileId) selectFile(id);
 }
 
-function selectFile(id) {
+function selectFile(id: string): void {
   const file = files.get(id);
   if (!file) return;
   activeFileId = id;
   engine.loadFile(file);
-  for (const li of el.fileList.children) li.classList.toggle('active', li.dataset.id === id);
+  for (const li of el.fileList.children) {
+    (li as HTMLElement).classList.toggle('active', (li as HTMLElement).dataset.id === id);
+  }
   // 파일을 고르면 파일 모드로 자동 전환(모든 Provider가 file 지원)
   if (engine.mode === Mode.MIC && (engine.provider?.capabilities || []).includes(Mode.FILE)) {
     safeSetMode(Mode.FILE);
   }
 }
 
-function removeFile(id) {
+function removeFile(id: string): void {
   files.delete(id);
-  [...el.fileList.children].find((c) => c.dataset.id === id)?.remove();
+  [...el.fileList.children].find((c) => (c as HTMLElement).dataset.id === id)?.remove();
   if (activeFileId === id) {
     activeFileId = null;
-    const first = el.fileList.firstElementChild;
-    if (first) selectFile(first.dataset.id);
+    const first = el.fileList.firstElementChild as HTMLElement | null;
+    if (first?.dataset.id) selectFile(first.dataset.id);
   }
 }
 
-function safeSetMode(mode) {
+function safeSetMode(mode: Mode): void {
   try {
     engine.setMode(mode);
   } catch (err) {
-    setStatus(err.message, 'warn');
+    setStatus(err instanceof Error ? err.message : String(err), 'warn');
   }
 }
 
@@ -394,46 +447,48 @@ el.providerSelect.addEventListener('change', async () => {
   try {
     await engine.useProvider(id, loadCfg(id));
   } catch (err) {
-    setStatus(err.message, 'error');
+    setStatus(err instanceof Error ? err.message : String(err), 'error');
   }
 });
 
-for (const btn of el.modeButtons) btn.addEventListener('click', () => safeSetMode(btn.dataset.mode));
+for (const btn of el.modeButtons) {
+  btn.addEventListener('click', () => safeSetMode(btn.dataset.mode as Mode));
+}
 el.langSelect.addEventListener('change', () => engine.setLang(el.langSelect.value));
 
-el.sinkRefresh.addEventListener('click', () => populateSinks());
+el.sinkRefresh.addEventListener('click', () => void populateSinks());
 el.sinkSelect.addEventListener('change', async () => {
   try {
     await engine.setOutputSink(el.sinkSelect.value);
   } catch (err) {
-    setStatus(err.message, 'error');
+    setStatus(err instanceof Error ? err.message : String(err), 'error');
   }
 });
-el.fileInput.addEventListener('change', (e) => addFiles(e.target.files));
+el.fileInput.addEventListener('change', () => addFiles(el.fileInput.files ?? []));
 
-['dragenter', 'dragover'].forEach((ev) =>
+for (const ev of ['dragenter', 'dragover'] as const) {
   el.dropzone.addEventListener(ev, (e) => {
     e.preventDefault();
     el.dropzone.classList.add('drag');
-  }),
-);
-['dragleave', 'drop'].forEach((ev) =>
+  });
+}
+for (const ev of ['dragleave', 'drop'] as const) {
   el.dropzone.addEventListener(ev, (e) => {
     e.preventDefault();
     el.dropzone.classList.remove('drag');
-  }),
-);
-el.dropzone.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
+  });
+}
+el.dropzone.addEventListener('drop', (e) => addFiles(e.dataTransfer?.files ?? []));
 el.dropzone.addEventListener('click', () => el.fileInput.click());
 
 el.btnStart.addEventListener('click', async () => {
   try {
     await engine.start();
   } catch (err) {
-    setStatus(err.message, 'error');
+    setStatus(err instanceof Error ? err.message : String(err), 'error');
   }
 });
-el.btnStop.addEventListener('click', () => engine.stop());
+el.btnStop.addEventListener('click', () => void engine.stop());
 el.btnClear.addEventListener('click', () => {
   el.transcript.innerHTML = '';
   setInterim('');
@@ -445,7 +500,7 @@ const datasetPanel = mountDatasetPanel({ engine, registry: datasetRegistry, setS
 window.__speechLab = { engine, datasetPanel };
 
 // ── 부트스트랩 ───────────────────────────────────────────────────────
-async function boot() {
+async function boot(): Promise<void> {
   if (!window.isSecureContext) el.secureBanner.hidden = false;
   engine.attachAudioElement(el.audio);
   engine.ready();
@@ -460,4 +515,4 @@ async function boot() {
   setStatus('대기 중 — 마이크는 시작을, 파일은 업로드 후 시작을 누르세요', 'idle');
 }
 
-boot();
+void boot();

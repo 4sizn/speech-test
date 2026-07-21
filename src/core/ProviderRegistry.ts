@@ -1,3 +1,15 @@
+import type { ConfigField, ProviderConfig, SttProvider, SttProviderClass } from './SttProvider';
+import type { Mode } from './events';
+
+/** UI에 노출하는 Provider 메타. */
+export interface ProviderMeta {
+  id: string;
+  label: string;
+  capabilities: readonly Mode[];
+  configSchema: readonly ConfigField[];
+  supported: boolean;
+}
+
 /**
  * Provider 레지스트리 = 의존성 주입 컨테이너.
  *
@@ -6,27 +18,21 @@
  * 엔진/UI 코드를 고치지 않고 모드로 주입된다. (개방-폐쇄 원칙)
  */
 export class ProviderRegistry {
-  /** @type {Map<string, typeof import('./SttProvider.js').SttProvider>} */
-  #factories = new Map();
+  #factories = new Map<string, SttProviderClass>();
 
-  /**
-   * Provider 클래스를 등록한다.
-   * @param {typeof import('./SttProvider.js').SttProvider} ProviderClass
-   */
-  register(ProviderClass) {
-    this.#factories.set(ProviderClass.id, ProviderClass);
+  /** Provider 클래스를 등록한다. */
+  register(ProviderClass: SttProviderClass<never> | SttProviderClass): this {
+    const C = ProviderClass as SttProviderClass;
+    this.#factories.set(C.id, C);
     return this;
   }
 
-  has(id) {
+  has(id: string): boolean {
     return this.#factories.has(id);
   }
 
-  /**
-   * 등록된 Provider 메타 목록(UI용).
-   * @returns {Array<{id:string,label:string,capabilities:string[],supported:boolean}>}
-   */
-  list() {
+  /** 등록된 Provider 메타 목록(UI용). */
+  list(): ProviderMeta[] {
     return [...this.#factories.values()].map((C) => ({
       id: C.id,
       label: C.label,
@@ -36,13 +42,8 @@ export class ProviderRegistry {
     }));
   }
 
-  /**
-   * 인스턴스를 생성한다.
-   * @param {string} id
-   * @param {object} [config]
-   * @returns {import('./SttProvider.js').SttProvider}
-   */
-  create(id, config = {}) {
+  /** 인스턴스를 생성한다. */
+  create(id: string, config: ProviderConfig = {}): SttProvider {
     const C = this.#factories.get(id);
     if (!C) {
       throw new Error(

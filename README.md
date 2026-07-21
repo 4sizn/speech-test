@@ -4,18 +4,18 @@
 STT 백엔드는 **Provider(어댑터)** 로 추상화되어 있고, **모드별로 주입**되어 동일한 출력 파이프로 흘러나온다.
 
 ws-network의 `WebSocketClientAdapter` + facade 패턴과 RVS SDK의 `MessageBus`(system/feature 이벤트 분리)를
-STT 도메인에 적용한 골자다.
+STT 도메인에 적용한 골자다. 소스는 **strict TypeScript**(`src/`), 실행/빌드는 **Vite**.
 
 ## 실행
 
 > ⚠️ 마이크/음성인식(`getUserMedia`, `SpeechRecognition`)은 **https 또는 localhost(보안 컨텍스트)** 에서만 동작한다.
-> 파일을 직접 더블클릭(`file://`)하면 ES 모듈/마이크가 막히므로 반드시 로컬 서버로 연다.
 
 ```bash
-# 아무거나 하나
-python3 -m http.server 5173      # → http://localhost:5173
-bunx --bun serve -l 5173 .
-npx serve -l 5173 .
+bun install          # 또는 npm install
+npm run dev          # Vite dev 서버 → http://localhost:5173
+npm run typecheck    # tsc --noEmit
+npm run build        # 타입체크 + 프로덕션 빌드 → dist/
+npm run preview      # dist/ 미리보기
 ```
 
 브라우저는 **Chrome / Edge** 권장(Web Speech API). Firefox는 SpeechRecognition 미지원.
@@ -30,7 +30,7 @@ npx serve -l 5173 .
                                           ▼                      │
                     ┌─────────────────────────────────────────────────────┐
    composition root │                  SttEngine  (Facade)                │
-   (app.js)         │  useProvider() · setMode() · loadFile() · start()    │
+   (app.ts)         │  useProvider() · setMode() · loadFile() · start()    │
                     │      └ 결과 sink 주입 → EventBus 로 정규화 발행        │
                     └───────┬───────────────────────────┬─────────────────┘
                   주입(DI)  │                            │ 발행
@@ -57,11 +57,11 @@ WebSpeech    Whisper       Streaming        Qwen3
 
 | 키워드 | 구현 위치 |
 |---|---|
-| **RxJS** | `js/core/EventBus.js` — `Subject` + 필터된 파생 스트림(`system`/`feature`/`on`) |
+| **RxJS** | `src/core/EventBus.ts` — `Subject` + 필터된 파생 스트림(`system`/`feature`/`on`) |
 | **OOP** | `SttProvider`(abstract) → WebSpeech/Whisper/Streaming/Qwen3 4종 상속 |
 | **adapter** | `SttProvider` 베이스가 STT 백엔드 차이를 단일 인터페이스로 흡수 |
 | **facade** | `SttEngine` — UI는 이 하나만 알면 됨 |
-| **기능 기반 설계** | `js/providers/<provider>` 단위로 캡슐화, `js/core`는 도메인 무관 |
+| **기능 기반 설계** | `src/providers/<provider>` 단위로 캡슐화, `src/core`는 도메인 무관 |
 | **시스템 이벤트 호출** | `SystemEvent.*` (`bus.system(...)`) — 연결/생명주기/상태 |
 | **기능 이벤트 호출** | `FeatureEvent.*` (`bus.feature(...)`) — 인식 결과(partial/final) |
 | **모드별 주입** | `ProviderRegistry`(DI) + `engine.useProvider(id, config)` |
@@ -96,7 +96,7 @@ rec.onresult = (e) => { /* 실시간 자막 */ };
 rec.start(track);                                  // ← 인자 있는 start(). 마이크 안 씀.
 ```
 
-이 앱에선 `js/providers/WebSpeechProvider.js`가 이 방식으로 동작한다(엔진이 `captureStream` 트랙을 주입).
+이 앱에선 `src/providers/WebSpeechProvider.ts`가 이 방식으로 동작한다(엔진이 `captureStream` 트랙을 주입).
 
 **검증(이 환경 Chrome 145, 직접 실행):**
 - `start({})` → `TypeError: parameter 1 is not of type 'MediaStreamTrack'` (오버로드 실재)
@@ -113,15 +113,15 @@ rec.start(track);                                  // ← 인자 있는 start().
 
 ## 새 Provider 추가하기
 
-```js
+```ts
 // 1) SttProvider 상속
 export class WhisperProvider extends SttProvider {
-  static id = 'whisper';
-  static label = 'Whisper';
-  static capabilities = [Mode.FILE];
-  async start(input) { /* ... this._sink.final(text) ... */ }
+  static override readonly id = 'whisper';
+  static override readonly label = 'Whisper';
+  static override readonly capabilities: readonly Mode[] = [Mode.FILE];
+  async start(input: SttInput): Promise<void> { /* ... this._sink.final(text) ... */ }
 }
-// 2) 합성 루트(app.js)에서 등록만 하면 끝 — UI/엔진 수정 불필요
+// 2) 합성 루트(app.ts)에서 등록만 하면 끝 — UI/엔진 수정 불필요
 registry.register(WhisperProvider);
 ```
 
@@ -131,17 +131,17 @@ registry.register(WhisperProvider);
 Provider와 동일한 주입형 패턴: **데이터셋 1개 = 어댑터 1개**, UI는 정규화 모델만 안다.
 
 ```
-DATASET 패널(js/ui/DatasetPanel.js)
+DATASET 패널(src/ui/DatasetPanel.ts)
   → 폴더 인입: File System Access API(폴더 핸들, IndexedDB에 기억)
               / <input webkitdirectory> 폴백 / entries 주입(테스트 시드)
   → FileTreeIndex: 인입 경로 3종을 "상대경로→File" 인덱스로 통일 (NFC 정규화)
   → DatasetRegistry.detect(index): 등록된 어댑터 중 해석 가능한 것을 자동 감지
   → DatasetAdapter: listSessions() / loadSession() → 정규화 세션·발화 모델
   → 발화 클릭 → engine.loadFile() (기존 파일 파이프라인 그대로)
-              + REF(정답 전사) 표시 + 인식 종료 시 CER(js/core/cer.js) 리포트
+              + REF(정답 전사) 표시 + 인식 종료 시 CER(src/core/cer.ts) 리포트
 ```
 
-정규화 모델(어댑터가 반환해야 하는 형태 — `js/datasets/DatasetAdapter.js` 참고):
+정규화 모델(어댑터가 반환해야 하는 형태 — `src/datasets/DatasetAdapter.ts` 참고):
 
 ```js
 Session   = { id, meta: { title, lines: string[] }, utterances: Utterance[] }
@@ -151,20 +151,22 @@ Utterance = { id, order, speaker: { id, role, detail },
 
 새 독립 샘플 추가 절차:
 
-```js
+```ts
 // 1) DatasetAdapter 상속 — detect()로 폴더 규격을 식별, loadSession()에서 정규화
 export class MyDatasetAdapter extends DatasetAdapter {
-  static id = 'my-dataset';
-  static label = '내 데이터셋';
-  static detect(index) { return index.paths.some((p) => /* 규격 시그니처 */); }
-  async listSessions() { /* ... */ }
-  async loadSession(id) { /* ... */ }
+  static override readonly id = 'my-dataset';
+  static override readonly label = '내 데이터셋';
+  static override detect(index: FileTreeIndex): boolean {
+    return index.paths.some((p) => /* 규격 시그니처 */ false);
+  }
+  async listSessions(): Promise<SessionSummary[]> { /* ... */ }
+  async loadSession(id: string): Promise<DatasetSession> { /* ... */ }
 }
-// 2) 합성 루트(app.js)에서 등록만 하면 끝 — UI 수정 불필요
+// 2) 합성 루트(app.ts)에서 등록만 하면 끝 — UI 수정 불필요
 datasetRegistry.register(MyDatasetAdapter);
 ```
 
-현재 등록: **AihubCallCenterAdapter** (`js/datasets/adapters/AihubCallCenterAdapter.js`)
+현재 등록: **AihubCallCenterAdapter** (`src/datasets/adapters/AihubCallCenterAdapter.ts`)
 — AI Hub 「상황별음성 상담 음성」(KtelSpeech). `라벨링데이터/**/SXXXX/SXXXX.json`(세션 메타·발화 순서)
 + 발화별 `NNNN.txt`(UTF-8 전사) + `원천데이터/**/SXXXX/NNNN.wav`(8kHz mono).
 JSON 내부 `audioPath`는 실제 배치와 달라 신뢰하지 않고 `세션ID/파일명` 접미로 wav를 역매핑한다.

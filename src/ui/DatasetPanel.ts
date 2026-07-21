@@ -1,9 +1,25 @@
-import { FileTreeIndex } from '../datasets/FileTreeIndex.js';
-import { saveHandle, loadHandle, ensurePermission } from '../datasets/handleStore.js';
-import { SystemEvent, FeatureEvent, Mode } from '../core/events.js';
-import { cer } from '../core/cer.js';
+import { FileTreeIndex, type FileEntry } from '../datasets/FileTreeIndex';
+import { saveHandle, loadHandle, ensurePermission } from '../datasets/handleStore';
+import { SystemEvent, FeatureEvent, Mode } from '../core/events';
+import { cer, type CerResult } from '../core/cer';
+import type { SttEngine } from '../core/SttEngine';
+import type { DatasetRegistry } from '../datasets/DatasetRegistry';
+import type { DatasetAdapter, DatasetSession, Utterance } from '../datasets/DatasetAdapter';
 
 const HANDLE_KEY = 'last-dataset';
+
+export interface DatasetPanelDeps {
+  engine: SttEngine;
+  registry: DatasetRegistry;
+  setStatus: (text: string, kind?: string) => void;
+  /** 자막 콘솔에 라인 추가 */
+  appendLine: (tag: string, text: string, className?: string) => void;
+}
+
+export interface DatasetPanelApi {
+  /** 테스트/외부 주입 시드: [{path, file}] 배열로 데이터셋을 연다. */
+  openFromEntries(entries: FileEntry[], name?: string): Promise<void>;
+}
 
 /**
  * DATASET 패널 UI.
@@ -11,36 +27,32 @@ const HANDLE_KEY = 'last-dataset';
  * 폴더 인입(FS Access API / webkitdirectory / entries 주입) → 레지스트리에서 어댑터
  * 자동 감지 → 정규화된 세션·발화 모델 렌더. 발화를 고르면 기존 파일 파이프라인
  * (engine.loadFile)을 그대로 타고, 참조 문장을 표시하며 인식 종료 시 CER을 계산한다.
- *
- * @param {object} deps
- * @param {import('../core/SttEngine.js').SttEngine} deps.engine
- * @param {import('../datasets/DatasetRegistry.js').DatasetRegistry} deps.registry
- * @param {(text:string, kind?:string)=>void} deps.setStatus
- * @param {(tag:string, text:string, className?:string)=>void} deps.appendLine 자막 콘솔에 라인 추가
- * @returns {{ openFromEntries(entries:Array<{path:string,file:File}>, name?:string): Promise<void> }}
  */
-export function mountDatasetPanel({ engine, registry, setStatus, appendLine }) {
-  const $ = (id) => document.getElementById(id);
+export function mountDatasetPanel({ engine, registry, setStatus, appendLine }: DatasetPanelDeps): DatasetPanelApi {
+  const $ = <T extends HTMLElement>(id: string): T => {
+    const node = document.getElementById(id);
+    if (!node) throw new Error(`#${id} 엘리먼트가 없습니다`);
+    return node as T;
+  };
   const el = {
-    open: $('ds-open'),
-    reopen: $('ds-reopen'),
-    dirInput: $('ds-dir-input'),
-    info: $('ds-info'),
-    sessionField: $('ds-session-field'),
-    session: $('ds-session'),
-    meta: $('ds-meta'),
-    nav: $('ds-nav'),
-    prev: $('ds-prev'),
-    next: $('ds-next'),
-    list: $('ds-utterances'),
-    reference: $('reference'),
-    refSpeaker: $('ref-speaker'),
-    refText: $('ref-text'),
+    open: $<HTMLButtonElement>('ds-open'),
+    reopen: $<HTMLButtonElement>('ds-reopen'),
+    dirInput: $<HTMLInputElement>('ds-dir-input'),
+    info: $<HTMLParagraphElement>('ds-info'),
+    sessionField: $<HTMLLabelElement>('ds-session-field'),
+    session: $<HTMLSelectElement>('ds-session'),
+    meta: $<HTMLParagraphElement>('ds-meta'),
+    nav: $<HTMLDivElement>('ds-nav'),
+    prev: $<HTMLButtonElement>('ds-prev'),
+    next: $<HTMLButtonElement>('ds-next'),
+    list: $<HTMLUListElement>('ds-utterances'),
+    reference: $<HTMLDivElement>('reference'),
+    refSpeaker: $<HTMLSpanElement>('ref-speaker'),
+    refText: $<HTMLParagraphElement>('ref-text'),
   };
 
-  /** @type {import('../datasets/DatasetAdapter.js').DatasetAdapter|null} */
-  let adapter = null;
-  let session = null;
+  let adapter: DatasetAdapter | null = null;
+  let session: DatasetSession | null = null;
   let activeIdx = -1;
 
   // CER: 인식 시작~중지 사이의 final을 모아 참조 문장과 비교.
@@ -48,11 +60,11 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }) {
   // 중지 후 유예 시간 동안 늦은 final까지 수집한 뒤 리포트한다.
   const GRACE_MS = 1500;
   let collecting = false;
-  let finals = [];
-  let refUtt = null; // 인식 시작 시점의 발화 스냅샷(유예 중 발화를 바꿔도 참조 유지)
-  let graceTimer = 0;
+  let finals: string[] = [];
+  let refUtt: Utterance | null = null; // 인식 시작 시점의 발화 스냅샷(유예 중 발화를 바꿔도 참조 유지)
+  let graceTimer: ReturnType<typeof setTimeout> | 0 = 0;
 
-  function finishRun() {
+  function finishRun(): void {
     clearTimeout(graceTimer);
     graceTimer = 0;
     if (!collecting) return;
@@ -74,12 +86,12 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }) {
     if (m.type === FeatureEvent.TRANSCRIPT_FINAL && collecting) finals.push(m.payload.text);
   });
 
-  function reportCer() {
+  function reportCer(): void {
     if (!refUtt || !finals.length) return;
     // WebSpeech 재시작 루프는 같은 내용을 누적 중복 final로 내보내기도 한다.
     // 개별 final과 전체 join을 모두 후보로 두고 가장 낮은 CER을 채택한다.
     const candidates = [...finals, finals.join(' ')];
-    let best = null;
+    let best: CerResult | null = null;
     let bestHyp = '';
     for (const hyp of candidates) {
       const r = cer(refUtt.text, hyp);
@@ -97,7 +109,7 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }) {
   }
 
   // ── 폴더 인입 3경로 → 공통 useIndex ─────────────────────────────────
-  async function useIndex(index) {
+  async function useIndex(index: FileTreeIndex): Promise<void> {
     adapter = registry.detect(index);
     if (!adapter) {
       const known = registry.list().map((a) => a.label).join(', ');
@@ -119,12 +131,12 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }) {
     if (sessions.length) await selectSession(sessions[0].id);
   }
 
-  async function openViaPicker() {
+  async function openViaPicker(): Promise<void> {
     if (!window.showDirectoryPicker) {
       el.dirInput.click(); // 폴백: webkitdirectory
       return;
     }
-    let handle;
+    let handle: FileSystemDirectoryHandle;
     try {
       handle = await window.showDirectoryPicker({ mode: 'read' });
     } catch {
@@ -134,18 +146,18 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }) {
     await scanHandle(handle);
   }
 
-  async function scanHandle(handle) {
+  async function scanHandle(handle: FileSystemDirectoryHandle): Promise<void> {
     setStatus('폴더 스캔 중…', 'warn');
     try {
       await useIndex(await FileTreeIndex.fromDirectoryHandle(handle));
       el.reopen.hidden = true;
     } catch (err) {
-      setStatus(`폴더 스캔 실패: ${err.message}`, 'error');
+      setStatus(`폴더 스캔 실패: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }
   }
 
-  async function reopenRecent() {
-    const handle = await loadHandle(HANDLE_KEY).catch(() => null);
+  async function reopenRecent(): Promise<void> {
+    const handle = await loadHandle(HANDLE_KEY).catch(() => undefined);
     if (!handle) return;
     if (!(await ensurePermission(handle))) {
       setStatus('폴더 접근 권한이 거부되었습니다', 'warn');
@@ -155,12 +167,13 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }) {
   }
 
   // ── 세션/발화 렌더 ───────────────────────────────────────────────────
-  async function selectSession(id) {
+  async function selectSession(id: string): Promise<void> {
+    if (!adapter) return;
     setStatus(`세션 로딩 중… (${id})`, 'warn');
     try {
       session = await adapter.loadSession(id);
     } catch (err) {
-      setStatus(`세션 로드 실패: ${err.message}`, 'error');
+      setStatus(`세션 로드 실패: ${err instanceof Error ? err.message : String(err)}`, 'error');
       return;
     }
     el.session.value = id;
@@ -173,8 +186,9 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }) {
     setStatus(`세션 ${id} · 발화 ${session.utterances.length}개`, 'ok');
   }
 
-  function renderUtterances() {
+  function renderUtterances(): void {
     el.list.innerHTML = '';
+    if (!session) return;
     session.utterances.forEach((u, i) => {
       const li = document.createElement('li');
       li.className = 'utt-item';
@@ -190,25 +204,25 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }) {
       txt.className = 'utt-text';
       txt.textContent = u.text;
       btn.append(head, txt);
-      btn.addEventListener('click', () => selectUtterance(i));
+      btn.addEventListener('click', () => void selectUtterance(i));
       li.appendChild(btn);
       el.list.appendChild(li);
     });
   }
 
-  async function selectUtterance(i) {
+  async function selectUtterance(i: number): Promise<void> {
     if (engine.isActive) {
       setStatus('인식 중에는 발화를 바꿀 수 없습니다 — 먼저 중지하세요', 'warn');
       return;
     }
     const utt = session?.utterances[i];
-    if (!utt) return;
+    if (!utt || !session) return;
     finishRun(); // 유예 대기 중이던 CER 먼저 정산(참조 스냅샷 기준)
-    let file;
+    let file: File;
     try {
       file = await utt.file();
     } catch (err) {
-      setStatus(`오디오 로드 실패: ${err.message}`, 'error');
+      setStatus(`오디오 로드 실패: ${err instanceof Error ? err.message : String(err)}`, 'error');
       return;
     }
     activeIdx = i;
@@ -225,27 +239,30 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }) {
     showReference(utt);
   }
 
-  function showReference(utt) {
+  function showReference(utt: Utterance): void {
+    if (!session) return;
     el.refSpeaker.textContent = `${session.id} · #${String(utt.order).padStart(3, '0')} ${utt.speaker.role}${utt.speaker.detail ? ` (${utt.speaker.detail})` : ''}`;
     el.refText.textContent = utt.text;
     el.reference.hidden = false;
   }
 
-  function hideReference() {
+  function hideReference(): void {
     el.reference.hidden = true;
   }
 
   // ── 이벤트 바인딩 ─────────────────────────────────────────────────────
-  el.open.addEventListener('click', openViaPicker);
-  el.reopen.addEventListener('click', reopenRecent);
-  el.dirInput.addEventListener('change', async () => {
-    if (el.dirInput.files?.length) await useIndex(FileTreeIndex.fromFileList(el.dirInput.files));
-    el.dirInput.value = '';
+  el.open.addEventListener('click', () => void openViaPicker());
+  el.reopen.addEventListener('click', () => void reopenRecent());
+  el.dirInput.addEventListener('change', () => {
+    void (async () => {
+      if (el.dirInput.files?.length) await useIndex(FileTreeIndex.fromFileList(el.dirInput.files));
+      el.dirInput.value = '';
+    })();
   });
-  el.session.addEventListener('change', () => selectSession(el.session.value));
-  el.prev.addEventListener('click', () => selectUtterance(Math.max(0, activeIdx - 1)));
+  el.session.addEventListener('change', () => void selectSession(el.session.value));
+  el.prev.addEventListener('click', () => void selectUtterance(Math.max(0, activeIdx - 1)));
   el.next.addEventListener('click', () =>
-    selectUtterance(activeIdx < 0 ? 0 : Math.min((session?.utterances.length ?? 1) - 1, activeIdx + 1)),
+    void selectUtterance(activeIdx < 0 ? 0 : Math.min((session?.utterances.length ?? 1) - 1, activeIdx + 1)),
   );
 
   // 재방문: 저장된 핸들이 있으면 "최근 데이터셋" 버튼 노출
@@ -259,7 +276,6 @@ export function mountDatasetPanel({ engine, registry, setStatus, appendLine }) {
     .catch(() => {});
 
   return {
-    /** 테스트/외부 주입 시드: [{path, file}] 배열로 데이터셋을 연다. */
     openFromEntries: (entries, name) => useIndex(FileTreeIndex.fromEntries(entries, name)),
   };
 }

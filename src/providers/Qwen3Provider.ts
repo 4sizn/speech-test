@@ -1,5 +1,11 @@
-import { SttProvider } from '../core/SttProvider.js';
-import { SystemEvent, Mode } from '../core/events.js';
+import { SttProvider, type ConfigField, type ProviderConfig, type SttInput } from '../core/SttProvider';
+import { SystemEvent, Mode } from '../core/events';
+
+interface Qwen3Config extends ProviderConfig {
+  endpoint?: string;
+  model?: string;
+  apiKey?: string;
+}
 
 /**
  * Qwen3 (클라우드 ASR) Provider — 스캐폴드.
@@ -16,30 +22,29 @@ import { SystemEvent, Mode } from '../core/events.js';
  * ⚠️ 실제 API 요청/응답 스키마는 제공자 문서에 맞춰 #transcribeFile/#streamMic을
  *    조정해야 한다(현재는 일반적인 multipart 형태의 골자). TODO 표시 참고.
  */
-export class Qwen3Provider extends SttProvider {
-  static id = 'qwen3';
-  static label = 'Qwen3 ASR (cloud, 파일전송)';
-  static capabilities = [Mode.FILE, Mode.MIC];
-  static fileInputKind = 'upload'; // 원본 File을 그대로 업로드
-  static configSchema = [
+export class Qwen3Provider extends SttProvider<Qwen3Config> {
+  static override readonly id = 'qwen3';
+  static override readonly label = 'Qwen3 ASR (cloud, 파일전송)';
+  static override readonly capabilities: readonly Mode[] = [Mode.FILE, Mode.MIC];
+  static override readonly fileInputKind = 'upload'; // 원본 File을 그대로 업로드
+  static override readonly configSchema: readonly ConfigField[] = [
     { key: 'endpoint', label: 'Endpoint URL', type: 'url', placeholder: 'https://...' },
     { key: 'model', label: 'Model', default: 'qwen3-asr-flash', placeholder: 'qwen3-asr-flash' },
     { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Bearer 토큰' },
   ];
 
-  static isSupported() {
+  static override isSupported(): boolean {
     return typeof fetch !== 'undefined';
   }
 
-  /** @type {MediaRecorder|null} */
-  #recorder = null;
-  #abort = null;
+  #recorder: MediaRecorder | null = null;
+  #abort: AbortController | null = null;
 
-  #isConfigured() {
+  #isConfigured(): boolean {
     return Boolean(this.config.endpoint && this.config.apiKey);
   }
 
-  async start(input) {
+  async start(input: SttInput): Promise<void> {
     if (!this.#isConfigured()) {
       this._sink?.system(SystemEvent.STATUS, {
         message: 'Qwen3 미설정 — 설정 패널에서 endpoint / apiKey 입력 필요',
@@ -50,14 +55,14 @@ export class Qwen3Provider extends SttProvider {
     }
 
     this._active = true;
-    if (input.mode === Mode.FILE) return this.#transcribeFile(input.file, input.lang);
-    if (input.mode === Mode.MIC) return this.#streamMic(input.stream, input.lang);
+    if (input.mode === Mode.FILE) return this.#transcribeFile(input.file ?? null, input.lang);
+    if (input.mode === Mode.MIC) return this.#streamMic(input.stream ?? null, input.lang);
   }
 
-  async stop() {
+  override async stop(): Promise<void> {
     this._active = false;
     try {
-      this.#recorder?.state !== 'inactive' && this.#recorder?.stop();
+      if (this.#recorder && this.#recorder.state !== 'inactive') this.#recorder.stop();
     } catch {
       /* noop */
     }
@@ -67,7 +72,7 @@ export class Qwen3Provider extends SttProvider {
   }
 
   // ── 파일 전송 인식 (정석) ───────────────────────────────────────────
-  async #transcribeFile(file, lang) {
+  async #transcribeFile(file: File | null, lang: string | undefined): Promise<void> {
     if (!file) {
       this._sink?.error(new Error('전송할 파일이 없습니다'));
       return;
@@ -82,7 +87,7 @@ export class Qwen3Provider extends SttProvider {
     if (lang) form.append('language', lang);
 
     try {
-      const res = await fetch(this.config.endpoint, {
+      const res = await fetch(this.config.endpoint!, {
         method: 'POST',
         headers: { Authorization: `Bearer ${this.config.apiKey}` },
         body: form,
@@ -92,7 +97,7 @@ export class Qwen3Provider extends SttProvider {
       const data = await res.json().catch(() => ({}));
 
       // TODO: 응답 스키마에 맞게 텍스트 추출 경로 수정.
-      const text =
+      const text: unknown =
         data.text ??
         data.output?.text ??
         data.result?.transcript ??
@@ -101,7 +106,7 @@ export class Qwen3Provider extends SttProvider {
       if (text) this._sink?.final(String(text).trim());
       else this._sink?.system(SystemEvent.STATUS, { message: '응답에서 텍스트를 찾지 못함 — 스키마 확인 필요', level: 'warn' });
     } catch (err) {
-      if (err?.name === 'AbortError') return;
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       this._sink?.error(err instanceof Error ? err : new Error(String(err)));
     } finally {
       this._active = false;
@@ -110,7 +115,7 @@ export class Qwen3Provider extends SttProvider {
   }
 
   // ── 마이크 청크 스트리밍 (골자) ─────────────────────────────────────
-  async #streamMic(stream, lang) {
+  async #streamMic(stream: MediaStream | null, lang: string | undefined): Promise<void> {
     if (!stream) {
       this._sink?.error(new Error('마이크 스트림이 없습니다'));
       return;
@@ -133,7 +138,7 @@ export class Qwen3Provider extends SttProvider {
     }
   }
 
-  async #sendChunk(blob, lang) {
+  async #sendChunk(blob: Blob, _lang: string | undefined): Promise<void> {
     // TODO: 스트리밍 엔드포인트에 청크 전송 후 partial/final emit.
     //       데모에서는 호출 흔적만 남긴다.
     this._sink?.partial(`[chunk ${blob.size}B 전송 — 스트리밍 엔드포인트 연결 필요]`);

@@ -1,5 +1,7 @@
-import { EventBus } from './EventBus.js';
-import { EventCategory, SystemEvent, FeatureEvent, Mode } from './events.js';
+import { EventBus } from './EventBus';
+import { EventCategory, SystemEvent, FeatureEvent, Mode } from './events';
+import type { ProviderRegistry, ProviderMeta } from './ProviderRegistry';
+import type { ProviderConfig, SttInput, SttProvider, TranscriptSink } from './SttProvider';
 
 /**
  * STT 파사드(Facade).
@@ -16,76 +18,66 @@ import { EventCategory, SystemEvent, FeatureEvent, Mode } from './events.js';
  */
 export class SttEngine {
   #bus = new EventBus();
-  #registry;
-  /** @type {import('./SttProvider.js').SttProvider|null} */
-  #provider = null;
-  #mode = Mode.MIC;
+  #registry: ProviderRegistry;
+  #provider: SttProvider | null = null;
+  #mode: Mode = Mode.MIC;
   #lang = 'ko-KR';
 
-  /** @type {HTMLAudioElement|null} */
-  #audio = null;
-  /** @type {File|null} */
-  #file = null;
+  #audio: HTMLAudioElement | null = null;
+  #file: File | null = null;
   #objectUrl = '';
 
   // 마이크 레벨 미터용
-  /** @type {MediaStream|null} */
-  #micStream = null;
-  /** @type {AudioContext|null} */
-  #audioCtx = null;
-  #analyser = null;
+  #micStream: MediaStream | null = null;
+  #audioCtx: AudioContext | null = null;
+  #analyser: AnalyserNode | null = null;
   #rafId = 0;
 
   // 파일 트랙 캡처(Web Audio fallback용 — createMediaElementSource는 1회만 허용)
-  #captureCtx = null;
-  #elementSource = null;
-  #captureDest = null;
+  #captureCtx: AudioContext | null = null;
+  #elementSource: MediaElementAudioSourceNode | null = null;
+  #captureDest: MediaStreamAudioDestinationNode | null = null;
 
   #active = false;
 
-  /** @param {import('./ProviderRegistry.js').ProviderRegistry} registry */
-  constructor(registry) {
+  constructor(registry: ProviderRegistry) {
     this.#registry = registry;
   }
 
   /** 외부 구독용 이벤트 버스. */
-  get bus() {
+  get bus(): EventBus {
     return this.#bus;
   }
-  get mode() {
+  get mode(): Mode {
     return this.#mode;
   }
-  get lang() {
+  get lang(): string {
     return this.#lang;
   }
-  get provider() {
+  get provider(): SttProvider | null {
     return this.#provider;
   }
-  get file() {
+  get file(): File | null {
     return this.#file;
   }
-  get isActive() {
+  get isActive(): boolean {
     return this.#active;
   }
 
-  listProviders() {
+  listProviders(): ProviderMeta[] {
     return this.#registry.list();
   }
 
   /** 엔진을 준비 완료 상태로 알린다. */
-  ready() {
+  ready(): void {
     this.#bus.emit(EventCategory.SYSTEM, SystemEvent.ENGINE_READY, {
       providers: this.listProviders(),
     });
   }
 
   // ─── Provider 주입 (의존성 주입) ────────────────────────────────────
-  /**
-   * 사용할 Provider를 주입한다.
-   * @param {string} id
-   * @param {object} [config]
-   */
-  async useProvider(id, config = {}) {
+  /** 사용할 Provider를 주입한다. */
+  async useProvider(id: string, config: ProviderConfig = {}): Promise<void> {
     if (this.#active) await this.stop();
     await this.#provider?.dispose();
 
@@ -113,11 +105,11 @@ export class SttEngine {
   }
 
   /** Provider 설정 갱신(예: Qwen 엔드포인트/키). */
-  configureProvider(config) {
+  configureProvider(config: ProviderConfig): void {
     this.#provider?.configure(config);
   }
 
-  setMode(mode) {
+  setMode(mode: Mode): void {
     if (this.#provider && !this.#provider.supports(mode)) {
       throw new Error(
         `[${this.#provider.id}] 모드 "${mode}" 미지원. 지원: [${this.#provider.capabilities.join(', ')}]`,
@@ -127,14 +119,14 @@ export class SttEngine {
     this.#bus.emit(EventCategory.SYSTEM, SystemEvent.MODE_CHANGED, { mode });
   }
 
-  setLang(lang) {
+  setLang(lang: string): void {
     this.#lang = lang;
     this.#provider?.configure({ lang });
   }
 
   // ─── 오디오 입력 ─────────────────────────────────────────────────────
   /** index.html의 <audio>를 연결하고 재생 이벤트를 시스템 이벤트로 승격한다. */
-  attachAudioElement(el) {
+  attachAudioElement(el: HTMLAudioElement): void {
     this.#audio = el;
     el.addEventListener('play', () =>
       this.#bus.emit(EventCategory.SYSTEM, SystemEvent.AUDIO_PLAY, {}),
@@ -150,7 +142,7 @@ export class SttEngine {
   }
 
   /** 업로드한 파일을 오디오 소스로 로드한다. */
-  loadFile(file) {
+  loadFile(file: File): void {
     if (!this.#audio) throw new Error('audio 엘리먼트가 연결되지 않았습니다');
     if (this.#objectUrl) URL.revokeObjectURL(this.#objectUrl);
     this.#objectUrl = URL.createObjectURL(file);
@@ -163,10 +155,10 @@ export class SttEngine {
     });
   }
 
-  play() {
+  play(): Promise<void> | undefined {
     return this.#audio?.play();
   }
-  pause() {
+  pause(): void {
     this.#audio?.pause();
   }
 
@@ -174,9 +166,9 @@ export class SttEngine {
    * <audio> 출력을 특정 장치로 라우팅한다(setSinkId).
    * 가상 오디오 장치로 보내고 그 장치를 OS 기본 입력으로 두면,
    * WebSpeech가 파일 오디오를 음향(공기) 없이 디지털로 인식한다 — 노이즈/볼륨 무관.
-   * @param {string} deviceId  enumerateDevices의 audiooutput deviceId ('default' 가능)
+   * @param deviceId enumerateDevices의 audiooutput deviceId ('default' 가능)
    */
-  async setOutputSink(deviceId) {
+  async setOutputSink(deviceId: string): Promise<void> {
     if (typeof this.#audio?.setSinkId !== 'function') {
       throw new Error('이 브라우저는 출력 라우팅(setSinkId)을 지원하지 않습니다');
     }
@@ -187,8 +179,10 @@ export class SttEngine {
   }
 
   // ─── 인식 제어 ───────────────────────────────────────────────────────
-  async start() {
+  async start(): Promise<void> {
     if (!this.#provider) throw new Error('Provider가 선택되지 않았습니다');
+    // 모델 로딩 등 준비 단계에서 재클릭 시 이중 시작 방지
+    if (this.#active) throw new Error('이미 인식이 진행/준비 중입니다 — 먼저 중지하세요');
     if (!this.#provider.supports(this.#mode)) {
       throw new Error(`현재 Provider는 "${this.#mode}" 모드를 지원하지 않습니다`);
     }
@@ -201,7 +195,7 @@ export class SttEngine {
     });
   }
 
-  async stop() {
+  async stop(): Promise<void> {
     this.#active = false;
     await this.#provider?.stop();
     this.#stopLevelMeter();
@@ -211,7 +205,7 @@ export class SttEngine {
   }
 
   /** 모드에 맞춰 Provider 입력을 조립한다. */
-  async #buildInput() {
+  async #buildInput(): Promise<SttInput> {
     const base = { mode: this.#mode, lang: this.#lang, audioEl: this.#audio };
 
     // 마이크 모드
@@ -241,7 +235,7 @@ export class SttEngine {
 
     if (kind === 'upload') {
       // 클라우드 업로드형 — 원본 File 전달 (+ 사용자 청취용 재생)
-      void this.play().catch(() => {});
+      void this.play()?.catch(() => {});
       return { ...base, file: this.#file };
     }
 
@@ -253,7 +247,7 @@ export class SttEngine {
   }
 
   /** 재생 중인 <audio>의 출력 트랙을 MediaStream으로 캡처한다(스피커 우회). */
-  #captureFileStream() {
+  #captureFileStream(): MediaStream | null {
     const a = this.#audio;
     if (!a) return null;
     if (typeof a.captureStream === 'function') return a.captureStream();
@@ -261,6 +255,7 @@ export class SttEngine {
     // Web Audio fallback
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
       if (!this.#captureCtx) {
         this.#captureCtx = new Ctx();
         this.#elementSource = this.#captureCtx.createMediaElementSource(a);
@@ -268,7 +263,7 @@ export class SttEngine {
         this.#elementSource.connect(this.#captureDest);
         this.#elementSource.connect(this.#captureCtx.destination); // 사용자 청취 유지
       }
-      return this.#captureDest.stream;
+      return this.#captureDest?.stream ?? null;
     } catch (err) {
       console.warn('[SttEngine] captureFileStream fallback 실패', err);
       return null;
@@ -276,7 +271,7 @@ export class SttEngine {
   }
 
   // ─── 마이크 레벨 미터 ────────────────────────────────────────────────
-  async #ensureMicStream() {
+  async #ensureMicStream(): Promise<MediaStream> {
     if (this.#micStream) return this.#micStream;
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('이 환경에서는 마이크 접근이 불가합니다 (https/localhost 필요)');
@@ -286,9 +281,10 @@ export class SttEngine {
     return this.#micStream;
   }
 
-  #startLevelMeter(stream) {
+  #startLevelMeter(stream: MediaStream): void {
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
       this.#audioCtx = new Ctx();
       const src = this.#audioCtx.createMediaStreamSource(stream);
       this.#analyser = this.#audioCtx.createAnalyser();
@@ -311,7 +307,7 @@ export class SttEngine {
     }
   }
 
-  #stopLevelMeter() {
+  #stopLevelMeter(): void {
     if (this.#rafId) cancelAnimationFrame(this.#rafId);
     this.#rafId = 0;
     this.#analyser = null;
@@ -320,13 +316,13 @@ export class SttEngine {
     this.#bus.emit(EventCategory.SYSTEM, SystemEvent.AUDIO_LEVEL, { level: 0 });
   }
 
-  #releaseMic() {
+  #releaseMic(): void {
     this.#micStream?.getTracks().forEach((t) => t.stop());
     this.#micStream = null;
   }
 
   /** Provider에 주입되는 결과 싱크. Provider→EventBus 정규화 지점. */
-  #makeSink() {
+  #makeSink(): TranscriptSink {
     return {
       partial: (text, meta = {}) =>
         this.#bus.emit(EventCategory.FEATURE, FeatureEvent.TRANSCRIPT_PARTIAL, {
@@ -349,7 +345,7 @@ export class SttEngine {
         }),
       error: (err) =>
         this.#bus.emit(EventCategory.SYSTEM, SystemEvent.RECOGNITION_ERROR, {
-          message: err?.message ?? String(err),
+          message: err instanceof Error ? err.message : String(err),
           provider: this.#provider?.id,
         }),
     };

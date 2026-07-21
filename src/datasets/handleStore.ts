@@ -6,7 +6,7 @@
 const DB_NAME = 'speech-test';
 const STORE = 'dataset-handles';
 
-function openDb() {
+function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
     req.onupgradeneeded = () => req.result.createObjectStore(STORE);
@@ -15,10 +15,10 @@ function openDb() {
   });
 }
 
-async function tx(mode, fn) {
+async function tx<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   const db = await openDb();
   try {
-    return await new Promise((resolve, reject) => {
+    return await new Promise<T>((resolve, reject) => {
       const t = db.transaction(STORE, mode);
       const req = fn(t.objectStore(STORE));
       req.onsuccess = () => resolve(req.result);
@@ -29,17 +29,17 @@ async function tx(mode, fn) {
   }
 }
 
-export function saveHandle(key, handle) {
+export function saveHandle(key: string, handle: FileSystemDirectoryHandle): Promise<IDBValidKey> {
   return tx('readwrite', (s) => s.put(handle, key));
 }
 
-export function loadHandle(key) {
-  return tx('readonly', (s) => s.get(key));
+export function loadHandle(key: string): Promise<FileSystemDirectoryHandle | undefined> {
+  return tx('readonly', (s) => s.get(key) as IDBRequest<FileSystemDirectoryHandle | undefined>);
 }
 
 /** 저장된 핸들의 읽기 권한을 확보한다(필요 시 사용자 프롬프트). */
-export async function ensurePermission(handle) {
-  const opts = { mode: 'read' };
+export async function ensurePermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
+  const opts = { mode: 'read' as const };
   if ((await handle.queryPermission(opts)) === 'granted') return true;
   return (await handle.requestPermission(opts)) === 'granted';
 }
