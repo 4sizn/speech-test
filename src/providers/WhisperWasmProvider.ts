@@ -1,4 +1,4 @@
-import { SttProvider, type ConfigField, type ProviderConfig, type SttInput } from '../core/SttProvider';
+import { SttProvider, type ConfigField, type ProviderConfig, type RuntimeLocation, type SttInput } from '../core/SttProvider';
 import { AudioPcmTap } from '../core/AudioPcmTap';
 import { SystemEvent, Mode } from '../core/events';
 
@@ -36,6 +36,8 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
   static override readonly id = 'whisper';
   static override readonly label = 'Whisper (로컬 WASM/WebGPU)';
   static override readonly capabilities: readonly Mode[] = [Mode.FILE, Mode.MIC];
+  // 인식 자체가 브라우저 내(WASM/WebGPU)에서만 수행된다 — 원격 옵션 없음
+  static override readonly locations: readonly RuntimeLocation[] = ['local'];
   static override readonly configSchema: readonly ConfigField[] = [
     { key: 'model', label: '모델', default: 'Xenova/whisper-tiny', placeholder: '예: Xenova/whisper-tiny' },
     { key: 'moduleUrl', label: 'transformers.js URL', default: 'https://esm.sh/@huggingface/transformers@3', placeholder: 'CDN ESM URL' },

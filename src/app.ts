@@ -8,7 +8,7 @@
 import { ProviderRegistry } from './core/ProviderRegistry';
 import { SttEngine } from './core/SttEngine';
 import { SystemEvent, FeatureEvent, Mode } from './core/events';
-import type { ConfigField, ProviderConfig } from './core/SttProvider';
+import type { ConfigField, ProviderConfig, RuntimeLocation } from './core/SttProvider';
 import type { ProviderMeta } from './core/ProviderRegistry';
 import { WebSpeechProvider } from './providers/WebSpeechProvider';
 import { WhisperWasmProvider } from './providers/WhisperWasmProvider';
@@ -46,6 +46,8 @@ const el = {
   providerSelect: $<HTMLSelectElement>('provider-select'),
   capabilityHint: $<HTMLParagraphElement>('capability-hint'),
   modeButtons: [...document.querySelectorAll<HTMLButtonElement>('[data-mode]')],
+  locationButtons: [...document.querySelectorAll<HTMLButtonElement>('[data-location]')],
+  locationHint: $<HTMLParagraphElement>('location-hint'),
   langSelect: $<HTMLSelectElement>('lang-select'),
   settings: $<HTMLFormElement>('provider-settings'),
   routing: $<HTMLDivElement>('routing'),
@@ -190,18 +192,40 @@ interface ProviderChangedPayload {
   capabilities: readonly Mode[];
   configSchema: readonly ConfigField[];
   fileInputKind: string;
+  locations: readonly RuntimeLocation[];
+  location: RuntimeLocation;
   mode: Mode;
 }
 
-function reflectProvider({ provider, label, capabilities, configSchema, fileInputKind, mode }: ProviderChangedPayload): void {
+function reflectProvider({ provider, label, capabilities, configSchema, fileInputKind, locations, location, mode }: ProviderChangedPayload): void {
   el.providerSelect.value = provider;
   applyControls();
   setActiveMode(mode);
   el.capabilityHint.textContent = `지원 모드: ${capabilities.map((c) => modeLabel(c)).join(' · ')}`;
+  renderLocations(locations, location);
   renderSettings(provider, label, configSchema);
   // WebSpeech처럼 파일을 음향 루프백으로만 받는 Provider는 디지털 라우팅 UI 노출
   el.routing.hidden = fileInputKind !== 'loopback';
   if (!el.routing.hidden) void populateSinks();
+}
+
+const LOCATION_LABEL: Record<RuntimeLocation, string> = {
+  local: '로컬 (온디바이스)',
+  'remote-onpremise': '온프레미스 (사내 서버)',
+  'remote-cloud': '클라우드',
+};
+
+/** Provider가 지원하는 실행 위치만 활성화하고 현재 선택을 반영한다. */
+function renderLocations(locations: readonly RuntimeLocation[], active: RuntimeLocation): void {
+  for (const btn of el.locationButtons) {
+    const loc = btn.dataset.location as RuntimeLocation;
+    const supported = locations.includes(loc);
+    btn.disabled = !supported;
+    btn.classList.toggle('unavailable', !supported);
+    btn.classList.toggle('active', supported && loc === active);
+    btn.title = supported ? LOCATION_LABEL[loc] : `${LOCATION_LABEL[loc]} — 이 Provider는 지원하지 않음`;
+  }
+  el.locationHint.textContent = `현재: ${LOCATION_LABEL[active]}`;
 }
 
 /** 출력 장치 목록을 채운다(가상장치 선택용). */
@@ -238,8 +262,9 @@ function renderSettings(providerId: string, label: string, schema: readonly Conf
   legend.textContent = `${label} 설정`;
   el.settings.appendChild(legend);
 
+  // location 등 폼 밖에서 관리되는 키를 지우지 않도록 저장분과 병합해 수집한다
   const collect = (): ProviderConfig => {
-    const values: ProviderConfig = {};
+    const values: ProviderConfig = { ...loadCfg(providerId) };
     for (const f of schema) {
       const node = $<HTMLInputElement>(`cfg-${f.key}`);
       values[f.key] = f.type === 'checkbox' ? node.checked : node.value.trim();
@@ -262,7 +287,7 @@ function renderSettings(providerId: string, label: string, schema: readonly Conf
         const values = collect();
         saveCfg(providerId, values);
         engine.configureProvider(values);
-        setStatus(`오프라인 모드 ${cb.checked ? 'ON' : 'OFF'}`, cb.checked ? 'ok' : 'idle');
+        setStatus(`${f.label} ${cb.checked ? 'ON' : 'OFF'}`, cb.checked ? 'ok' : 'idle');
       });
       row.append(cb, span);
       el.settings.appendChild(row);
@@ -330,6 +355,11 @@ function applyControls(): void {
   el.langSelect.disabled = busy;
   for (const btn of el.modeButtons) {
     const supported = (engine.provider?.capabilities ?? []).includes(btn.dataset.mode as Mode);
+    btn.disabled = busy || !supported;
+    btn.classList.toggle('unavailable', !supported);
+  }
+  for (const btn of el.locationButtons) {
+    const supported = (engine.provider?.locations ?? []).includes(btn.dataset.location as RuntimeLocation);
     btn.disabled = busy || !supported;
     btn.classList.toggle('unavailable', !supported);
   }
@@ -459,6 +489,20 @@ el.providerSelect.addEventListener('change', async () => {
 for (const btn of el.modeButtons) {
   btn.addEventListener('click', () => safeSetMode(btn.dataset.mode as Mode));
 }
+
+// 실행 위치 선택 — Provider별로 저장하고 즉시 적용 (미지원 버튼은 disabled라 진입 불가)
+for (const btn of el.locationButtons) {
+  btn.addEventListener('click', () => {
+    const location = btn.dataset.location as RuntimeLocation;
+    const id = el.providerSelect.value;
+    const cfg = { ...loadCfg(id), location };
+    saveCfg(id, cfg);
+    engine.configureProvider({ location });
+    renderLocations(engine.provider?.locations ?? [], location);
+    setStatus(`실행 위치 → ${LOCATION_LABEL[location]}`, 'ok');
+  });
+}
+
 el.langSelect.addEventListener('change', () => engine.setLang(el.langSelect.value));
 
 el.sinkRefresh.addEventListener('click', () => void populateSinks());

@@ -1,4 +1,4 @@
-import type { ConfigField, ProviderConfig, SttProvider, SttProviderClass } from './SttProvider';
+import type { ConfigField, ProviderConfig, RuntimeLocation, SttProvider, SttProviderClass } from './SttProvider';
 import type { Mode } from './events';
 
 /** UI에 노출하는 Provider 메타. */
@@ -7,6 +7,7 @@ export interface ProviderMeta {
   label: string;
   capabilities: readonly Mode[];
   configSchema: readonly ConfigField[];
+  locations: readonly RuntimeLocation[];
   supported: boolean;
 }
 
@@ -38,6 +39,7 @@ export class ProviderRegistry {
       label: C.label,
       capabilities: C.capabilities,
       configSchema: C.configSchema,
+      locations: C.locations,
       supported: C.isSupported(),
     }));
   }

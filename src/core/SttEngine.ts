@@ -100,6 +100,8 @@ export class SttEngine {
       capabilities: this.#provider.capabilities,
       configSchema: this.#provider.configSchema,
       fileInputKind: this.#provider.fileInputKind,
+      locations: this.#provider.locations,
+      location: this.#provider.location,
       mode: this.#mode,
     });
   }

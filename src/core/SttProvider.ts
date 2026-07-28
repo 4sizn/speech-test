@@ -47,9 +47,19 @@ export interface ConfigField {
  */
 export type FileInputKind = 'stream' | 'loopback' | 'upload';
 
+/**
+ * 인식 처리가 실제로 일어나는 실행 위치.
+ *  - 'local'            : 브라우저/디바이스 내에서 처리 (서버 전송 없음)
+ *  - 'remote-onpremise' : 사내(자체 구축) 서버로 전송해 처리
+ *  - 'remote-cloud'     : 외부 클라우드 서비스로 전송해 처리
+ */
+export type RuntimeLocation = 'local' | 'remote-onpremise' | 'remote-cloud';
+
 /** Provider별 설정(엔드포인트/키/언어 등). 서브클래스가 구체 필드로 확장한다. */
 export interface ProviderConfig {
   lang?: string;
+  /** 선택된 실행 위치. Provider의 locations에 포함된 값이어야 한다. */
+  location?: RuntimeLocation;
   [key: string]: unknown;
 }
 
@@ -60,6 +70,7 @@ export interface SttProviderClass<C extends ProviderConfig = ProviderConfig> {
   readonly capabilities: readonly Mode[];
   readonly configSchema: readonly ConfigField[];
   readonly fileInputKind: FileInputKind;
+  readonly locations: readonly RuntimeLocation[];
   isSupported(): boolean;
   new (config?: C): SttProvider<C>;
 }
@@ -84,6 +95,8 @@ export abstract class SttProvider<C extends ProviderConfig = ProviderConfig> {
   /** Provider가 필요로 하는 설정 스키마. UI가 이걸 보고 설정 폼을 자동 렌더한다(하드코딩 제거). */
   static readonly configSchema: readonly ConfigField[] = [];
   static readonly fileInputKind: FileInputKind = 'stream';
+  /** 지원하는 실행 위치 목록. 첫 항목이 기본값. UI는 미포함 항목을 비활성화한다. */
+  static readonly locations: readonly RuntimeLocation[] = ['local'];
 
   /** 런타임 지원 여부. 브라우저 API 의존 Provider가 override. */
   static isSupported(): boolean {
@@ -123,9 +136,25 @@ export abstract class SttProvider<C extends ProviderConfig = ProviderConfig> {
     return this.#static().fileInputKind;
   }
 
+  get locations(): readonly RuntimeLocation[] {
+    return this.#static().locations;
+  }
+
+  /** 현재 실행 위치(설정값 없으면 첫 지원 위치). */
+  get location(): RuntimeLocation {
+    const loc = this.config.location;
+    if (loc && this.locations.includes(loc)) return loc;
+    return this.locations[0] ?? 'local';
+  }
+
   /** 모드 지원 여부. */
   supports(mode: Mode): boolean {
     return this.capabilities.includes(mode);
+  }
+
+  /** 실행 위치 지원 여부. */
+  supportsLocation(location: RuntimeLocation): boolean {
+    return this.locations.includes(location);
   }
 
   /** 결과 싱크를 주입받는다(엔진이 호출). === 의존성 주입 지점. */

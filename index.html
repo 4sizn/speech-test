@@ -53,6 +53,16 @@
         <p id="capability-hint" class="cap-hint"></p>
 
         <div class="field">
+          <span class="field-label">실행 위치</span>
+          <div class="segmented" role="group" aria-label="실행 위치">
+            <button type="button" class="seg" data-location="local">💻 로컬</button>
+            <button type="button" class="seg" data-location="remote-onpremise">🏢 온프레미스</button>
+            <button type="button" class="seg" data-location="remote-cloud">☁ 클라우드</button>
+          </div>
+          <p id="location-hint" class="cap-hint"></p>
+        </div>
+
+        <div class="field">
           <span class="field-label">Mode</span>
           <div class="segmented" role="group" aria-label="인식 모드">
             <button type="button" class="seg" data-mode="mic">🎙 마이크</button>
