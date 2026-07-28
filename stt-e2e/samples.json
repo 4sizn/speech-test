@@ -1,0 +1,208 @@
+{
+  "generatedBy": "scripts/qa/select-samples.mjs",
+  "datasetName": "aihub_call_center_dataset (AI Hub 상황별음성 상담 음성 / KtelSpeech)",
+  "note": "정답 전사 원문은 저장하지 않는다(재배포 제약). refHash/refLength만 기록하고 실행 시점에 로컬 데이터셋에서 읽는다.",
+  "normalizerFingerprint": "13fcfcca40a3",
+  "short": 8,
+  "long": 2,
+  "items": [
+    {
+      "id": "S00007727/0002",
+      "set": "short",
+      "kind": "utterance",
+      "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007727/0002.wav",
+      "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007727/0002.txt",
+      "refHash": "30853455f6df",
+      "refLength": 28,
+      "sec": 3.34,
+      "sampleRate": 8000
+    },
+    {
+      "id": "S00007727/0003",
+      "set": "short",
+      "kind": "utterance",
+      "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007727/0003.wav",
+      "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007727/0003.txt",
+      "refHash": "65c303fb6c97",
+      "refLength": 27,
+      "sec": 2.64,
+      "sampleRate": 8000
+    },
+    {
+      "id": "S00007731/0001",
+      "set": "short",
+      "kind": "utterance",
+      "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007731/0001.wav",
+      "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007731/0001.txt",
+      "refHash": "8fc034b15fff",
+      "refLength": 23,
+      "sec": 2.65,
+      "sampleRate": 8000
+    },
+    {
+      "id": "S00007731/0002",
+      "set": "short",
+      "kind": "utterance",
+      "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007731/0002.wav",
+      "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007731/0002.txt",
+      "refHash": "d725148534e6",
+      "refLength": 54,
+      "sec": 6.51,
+      "sampleRate": 8000
+    },
+    {
+      "id": "S00007735/0007",
+      "set": "short",
+      "kind": "utterance",
+      "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007735/0007.wav",
+      "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007735/0007.txt",
+      "refHash": "be9b33ae71b2",
+      "refLength": 45,
+      "sec": 5.38,
+      "sampleRate": 8000
+    },
+    {
+      "id": "S00007735/0009",
+      "set": "short",
+      "kind": "utterance",
+      "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007735/0009.wav",
+      "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007735/0009.txt",
+      "refHash": "4c9b8ffaf7d3",
+      "refLength": 24,
+      "sec": 2.91,
+      "sampleRate": 8000
+    },
+    {
+      "id": "S00007740/0005",
+      "set": "short",
+      "kind": "utterance",
+      "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007740/0005.wav",
+      "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007740/0005.txt",
+      "refHash": "69448371b43e",
+      "refLength": 69,
+      "sec": 8.27,
+      "sampleRate": 8000
+    },
+    {
+      "id": "S00007740/0006",
+      "set": "short",
+      "kind": "utterance",
+      "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007740/0006.wav",
+      "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007740/0006.txt",
+      "refHash": "a209302f23d8",
+      "refLength": 40,
+      "sec": 4.05,
+      "sampleRate": 8000
+    },
+    {
+      "id": "long/S00007728",
+      "set": "long",
+      "kind": "concat",
+      "parts": [
+        {
+          "uttId": "0001",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007728/0001.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007728/0001.txt",
+          "sec": 3.57
+        },
+        {
+          "uttId": "0003",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007728/0003.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007728/0003.txt",
+          "sec": 2.26
+        },
+        {
+          "uttId": "0005",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007728/0005.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007728/0005.txt",
+          "sec": 7.64
+        },
+        {
+          "uttId": "0006",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007728/0006.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007728/0006.txt",
+          "sec": 1.41
+        },
+        {
+          "uttId": "0007",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007728/0007.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007728/0007.txt",
+          "sec": 2.97
+        },
+        {
+          "uttId": "0009",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007728/0009.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007728/0009.txt",
+          "sec": 2.23
+        },
+        {
+          "uttId": "0011",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007728/0011.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007728/0011.txt",
+          "sec": 11.52
+        }
+      ],
+      "gapSec": 0.5,
+      "refHash": "4460a3d30a11",
+      "refLength": 232,
+      "sec": 35.09,
+      "utterances": 7,
+      "sampleRate": 8000
+    },
+    {
+      "id": "long/S00007729",
+      "set": "long",
+      "kind": "concat",
+      "parts": [
+        {
+          "uttId": "0001",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007729/0001.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007729/0001.txt",
+          "sec": 2.41
+        },
+        {
+          "uttId": "0003",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007729/0003.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007729/0003.txt",
+          "sec": 9.28
+        },
+        {
+          "uttId": "0005",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007729/0005.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007729/0005.txt",
+          "sec": 2.12
+        },
+        {
+          "uttId": "0006",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007729/0006.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007729/0006.txt",
+          "sec": 3.3
+        },
+        {
+          "uttId": "0007",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007729/0007.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007729/0007.txt",
+          "sec": 1.02
+        },
+        {
+          "uttId": "0008",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007729/0008.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007729/0008.txt",
+          "sec": 6.61
+        },
+        {
+          "uttId": "0009",
+          "relPath": "원천데이터/KtelSpeech_train_D60_wav_0/J91/S00007729/0009.wav",
+          "refPath": "라벨링데이터/KtelSpeech_train_D60_label_0/J91/S00007729/0009.txt",
+          "sec": 11
+        }
+      ],
+      "gapSec": 0.5,
+      "refHash": "99b272a6e5c7",
+      "refLength": 279,
+      "sec": 39.24,
+      "utterances": 7,
+      "sampleRate": 8000
+    }
+  ]
+}

@@ -5,17 +5,11 @@
  * 그 외 모든 코드는 추상화(SttProvider/SttEngine/EventBus)에만 의존한다.
  * Provider 설정 폼은 각 Provider의 static configSchema를 보고 자동 렌더한다(하드코딩 없음).
  */
-import { ProviderRegistry } from './core/ProviderRegistry';
 import { SttEngine } from './core/SttEngine';
 import { SystemEvent, FeatureEvent, Mode } from './core/events';
 import type { ConfigField, ProviderConfig, RuntimeLocation } from './core/SttProvider';
 import type { ProviderMeta } from './core/ProviderRegistry';
-import { WebSpeechProvider } from './providers/WebSpeechProvider';
-import { WhisperWasmProvider } from './providers/WhisperWasmProvider';
-import { StreamingAsrProvider } from './providers/StreamingAsrProvider';
-import { FunAsrProvider } from './providers/FunAsrProvider';
-import { SenseVoiceProvider } from './providers/SenseVoiceProvider';
-import { Qwen3Provider } from './providers/Qwen3Provider';
+import { createProviderRegistry } from './providers/registerAll';
 import { DatasetRegistry } from './datasets/DatasetRegistry';
 import { AihubCallCenterAdapter } from './datasets/adapters/AihubCallCenterAdapter';
 import { mountDatasetPanel } from './ui/DatasetPanel';
@@ -29,13 +23,8 @@ const $ = <T extends HTMLElement>(id: string): T => {
 const cfgKey = (id: string) => `speech-test.cfg.${id}`;
 
 // ── 1) 합성: Provider/Dataset 어댑터 등록 → 엔진 생성 ─────────────────
-const registry = new ProviderRegistry()
-  .register(WebSpeechProvider)
-  .register(WhisperWasmProvider)
-  .register(StreamingAsrProvider)
-  .register(FunAsrProvider)
-  .register(SenseVoiceProvider)
-  .register(Qwen3Provider);
+// Provider 등록 목록은 QA 하네스와 공유한다(src/providers/registerAll.ts)
+const registry = createProviderRegistry();
 
 // 독립 샘플(데이터셋)도 Provider와 같은 주입형 — 새 샘플은 어댑터 register 한 줄
 const datasetRegistry = new DatasetRegistry().register(AihubCallCenterAdapter);

@@ -1,0 +1,56 @@
+{
+  "feature": "qwen3-file",
+  "provider": "qwen3",
+  "mode": "file",
+  "location": "remote-cloud",
+  "config": {},
+  "note": "자격 미설정이면 SKIP",
+  "tolerance": 0.05,
+  "runs": [
+    {
+      "at": "2026-07-28T17:03:30.801Z",
+      "commit": "33be282",
+      "dirty": true,
+      "profile": "quick",
+      "env": {
+        "chrome": "Chrome/150.0.7871.187",
+        "assets": {
+          "Xenova/whisper-base": true
+        },
+        "servers": {
+          "8765": "reused",
+          "8766": "reused",
+          "8767": "reused"
+        },
+        "dataset": "aihub_call_center_dataset (AI Hub 상황별음성 상담 음성 / KtelSpeech)",
+        "samples": 10,
+        "fakeMic": true
+      },
+      "sourceHashes": {
+        "package.json": "c1b08f3777c5",
+        "server/realtime_asr_server.py": "b4709a0fb169",
+        "src/core/AudioPcmTap.ts": "5c04d1c3b157",
+        "src/core/EventBus.ts": "ccc870ebb85a",
+        "src/core/ProviderRegistry.ts": "84e1a35d35d0",
+        "src/core/SttEngine.ts": "1f07c049da57",
+        "src/core/SttProvider.ts": "0ad91656a7fc",
+        "src/core/cer.ts": "d462c3123f08",
+        "src/core/events.ts": "c97d2242ef20",
+        "src/providers/FunAsrProvider.ts": "f445e8734eeb",
+        "src/providers/Qwen3Provider.ts": "114f77b8891d",
+        "src/providers/SenseVoiceProvider.ts": "6864951abd6b",
+        "src/providers/StreamingAsrProvider.ts": "256f600ea4ef",
+        "src/providers/WebSpeechProvider.ts": "5cc14b3b4dd5",
+        "src/providers/WhisperWasmProvider.ts": "400252420c19",
+        "vite.config.ts": "32419d7ae4c0"
+      },
+      "cerAvg": null,
+      "cerMedian": null,
+      "cerWorst": null,
+      "msAvg": null,
+      "samples": 0,
+      "skipped": "Qwen3 미설정 — 설정 패널에서 endpoint / apiKey 입력 필요",
+      "items": []
+    }
+  ]
+}

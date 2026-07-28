@@ -1,0 +1,70 @@
+{
+  "features": {
+    "whisper-base-file": {
+      "cerAvg": 0.3058,
+      "cerMedian": 0.2722,
+      "samples": 10,
+      "tolerance": 0.02,
+      "at": "2026-07-28T17:03:30.801Z"
+    },
+    "whisper-base-mic": {
+      "cerAvg": 0.2584,
+      "cerMedian": 0.1883,
+      "samples": 8,
+      "tolerance": 0.02,
+      "at": "2026-07-28T17:03:30.801Z"
+    },
+    "streaming-file": {
+      "cerAvg": 0.255,
+      "cerMedian": 0.2389,
+      "samples": 10,
+      "tolerance": 0.02,
+      "at": "2026-07-28T17:03:30.801Z"
+    },
+    "streaming-mic": {
+      "cerAvg": 0.2783,
+      "cerMedian": 0.1883,
+      "samples": 8,
+      "tolerance": 0.02,
+      "at": "2026-07-28T17:03:30.801Z"
+    },
+    "sensevoice-file": {
+      "cerAvg": 0.1622,
+      "cerMedian": 0.1558,
+      "samples": 10,
+      "tolerance": 0.02,
+      "at": "2026-07-28T17:03:30.801Z"
+    },
+    "sensevoice-mic": {
+      "cerAvg": 0.1081,
+      "cerMedian": 0.1193,
+      "samples": 8,
+      "tolerance": 0.02,
+      "at": "2026-07-28T17:03:30.801Z"
+    },
+    "funasr-file": {
+      "cerAvg": 0.9958,
+      "cerMedian": 1,
+      "samples": 10,
+      "tolerance": 0.02,
+      "at": "2026-07-28T17:03:30.801Z"
+    },
+    "webspeech-file": {
+      "cerAvg": 0.0619,
+      "cerMedian": 0.0744,
+      "samples": 8,
+      "tolerance": 0.05,
+      "at": "2026-07-28T17:03:30.801Z"
+    },
+    "webspeech-mic": {
+      "cerAvg": 0.0536,
+      "cerMedian": 0.0318,
+      "samples": 8,
+      "tolerance": 0.05,
+      "at": "2026-07-28T17:03:30.801Z"
+    }
+  },
+  "updatedAt": "2026-07-28T17:03:30.801Z",
+  "commit": "33be282",
+  "note": "기능별 기준 오류값 — npm run qa:stt -- --update-baseline 으로만 갱신"
+}

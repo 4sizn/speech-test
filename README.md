@@ -26,6 +26,74 @@ npm run preview      # dist/ 미리보기
 
 브라우저는 **Chrome / Edge** 권장(Web Speech API). Firefox는 SpeechRecognition 미지원.
 
+## STT E2E QA — 전 기능 자동 측정과 푸시 게이트
+
+Provider를 고칠 때마다 손으로 파일을 올리고 재생 버튼을 누르는 확인은 회귀를 놓친다(실제로
+Whisper 기본값 tiny의 CER 458% 환각을 그 방식으로는 못 잡고 있었다). 그래서 **모든 기능
+(Provider × 모드 × 실행 위치)을 정답 전사가 있는 데이터셋으로 자동 측정**하고, 그 결과지가
+기준선보다 나빠지지 않았을 때만 푸시되게 한다.
+
+```bash
+npm run qa:samples   # 데이터셋에서 테스트 사운드 배열 선정 → stt-e2e/samples.json (최초 1회)
+npm run qa:stt       # 전 기능 자동 순회 → 결과지 작성 → 기준선 대비 판정(FAIL이면 non-zero exit)
+npm run qa:gate      # 측정 없이 최신 결과지만 재판정
+npm run qa:hooks     # pre-push 게이트 활성화(git config core.hooksPath .githooks) — 최초 1회
+```
+
+- 기준 데이터: AI Hub 「상황별음성 상담 음성」(8kHz 전화). 경로는 `STT_QA_DATASET`으로 지정,
+  기본값은 저장소와 나란한 `../aihub_call_center_dataset`.
+- 옵션: `--profile quick|full`, `--samples N`, `--features a,b`, `--update-baseline`,
+  `--no-servers`(온프레미스 서버를 직접 띄우지 않음), `--keep-open`(브라우저 유지).
+- 온프레미스 서버(8765/8766/8767)는 러너가 필요할 때 **직접 띄우고 종료**한다. 사람이 서버를
+  안 띄웠다는 이유로 기능이 SKIP되어 게이트가 헐거워지지 않게.
+
+### 결과지 — `stt-e2e/`
+
+```
+stt-e2e/samples.json              테스트 사운드 배열(데이터셋 상대경로 + 정답 해시)
+stt-e2e/baseline.json             기능별 기준 오류값 — 이 값 이하여야 푸시 가능
+stt-e2e/<yyyy-mm-dd>/
+  <기능>.json                     기능별 오류값 결과지(같은 날 재실행은 runs[]에 누적)
+  summary.md / summary.json       그날의 결과지(사람이 읽는 표 / 기계 판정용)
+stt-e2e/.local/                   원문 상세·브라우저 프로필·이벤트 로그 (커밋 제외)
+```
+
+정답 전사와 인식 결과 **원문은 커밋하지 않는다** — 이 저장소는 public이고 데이터셋은 이용 승인
+기반이라 재배포 제약이 있다. 커밋되는 결과지에는 CER·편집거리·길이·지연 등 수치만 담고, 원문
+대조는 `stt-e2e/.local/<날짜>/<기능>.detail.json`에서 한다.
+
+### 게이트 규칙
+
+- 기능별로 `cerAvg <= 기준선 + 허용오차`(결정적 경로 2%p, WebSpeech 5%p)
+- 기준선에 있던 기능이 이번에 SKIP → **FAIL**(측정을 건너뛰어 통과하는 길을 막는다)
+- 기준선 갱신은 `--update-baseline`으로만. 자동 승격하면 한 번 통과한 회귀가 새 기준이 된다
+- `pre-push` 훅은 **측정을 다시 돌리지 않고**(quick도 20분대) 최신 결과지를 검사한다:
+  판정이 PASS인지 + 그 결과지가 **지금 푸시하는 소스로** 측정된 것인지(감시 경로 해시 일치) +
+  샘플 정답·정규화 규칙이 그대로인지. STT 소스가 안 바뀐 푸시(문서·결과지만)는 그냥 통과한다.
+
+### 자동 순회가 되는 이유 (사람이 재생 버튼을 누르지 않는다)
+
+- **파일 모드**: `engine.start()`가 재생을 시작하고, 재생이 끝나면 엔진이 스스로 인식을 종료한다
+  (`SttEngine`의 audio `ended` → `stop()`). 하네스는 다음 샘플로 넘어가기만 한다.
+- **마이크 모드**: 하네스가 `getUserMedia`를 오버라이드해 샘플을 재생한 `captureStream()`을
+  돌려준다 → PCM 경로(`AudioPcmTap`)와 WebSpeech `start(track)` 경로가 실제로 검증된다.
+  실제 물리 마이크가 아닌 **파일 주입 가짜 마이크**이고, 결과지에 매번 명시된다.
+- 자동 재생은 두 겹으로 보장한다: 러너가 `--autoplay-policy=no-user-gesture-required`로 Chrome을
+  띄우고, **하네스의 [순회 시작] 버튼을 실제로 클릭**해 user activation을 만든다. 하네스가 쓰는
+  `<audio>`는 `muted`라 정책과 무관하게 재생되며, muted가 `captureStream` 오디오를 죽이지
+  않는 것은 실측으로 확인했다.
+- CER 채택 규칙은 앱의 `DatasetPanel`과 동일하다(중지 후 1.5초 유예 + 개별/합친 final 중 최소).
+  WebSpeech는 final이 중지 뒤에 도착하고 재시작 루프가 중복 final을 내므로 이 규칙이 없으면
+  부당하게 나쁘게 측정된다.
+
+### QA로 검증되지 않는 것
+
+- 물리 마이크·에코·주변 잡음(가짜 마이크라서)
+- WebSpeech는 클라우드 인식이라 실행마다 흔들린다 → 허용 오차 5%p, 회귀는 추세로 판단
+- FunASR은 한국어를 못 하는 게 정상이다(중국어 전용 모델) → 절대 CER이 아니라 변화만 의미 있다
+- 마이크 모드는 캡처가 붙기 전 재생이 조금 진행되어 발화 앞부분이 잘릴 수 있다 —
+  같은 조건이 매번 반복되므로 회귀 감지에는 문제가 없지만, 절대값은 파일 모드보다 나쁘게 나온다
+
 ## 아키텍처
 
 ```

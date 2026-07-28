@@ -1,0 +1,39 @@
+#!/bin/sh
+# STT E2E 푸시 게이트.
+#
+# STT 동작에 영향을 주는 소스가 바뀐 푸시는 "최신 결과지가 PASS이고, 그 결과지가 지금 소스로
+# 측정된 것"일 때만 통과시킨다. 측정 자체는 여기서 돌리지 않는다(quick도 15~25분).
+#
+# 활성화: npm run qa:hooks   (git config core.hooksPath .githooks)
+# 문서·결과지만 바뀐 푸시는 그대로 통과한다 — 게이트 목적은 동작 회귀 차단이다.
+
+set -e
+
+WATCHED='src/providers src/core src/qa server/realtime_asr_server.py vite.config.ts package.json'
+changed=''
+
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ -z "$local_sha" ] && continue
+  # 브랜치 삭제
+  case "$local_sha" in *[!0]*) ;; *) continue ;; esac
+
+  case "$remote_sha" in
+    *[!0]*) range="$remote_sha..$local_sha" ;;      # 기존 브랜치: 새 커밋만
+    *)      range="$local_sha" ;;                    # 새 브랜치: 커밋 전체
+  esac
+
+  if [ "$range" = "$local_sha" ]; then
+    files=$(git diff-tree --no-commit-id --name-only -r "$local_sha" -- $WATCHED 2>/dev/null || true)
+  else
+    files=$(git diff --name-only "$range" -- $WATCHED 2>/dev/null || true)
+  fi
+  changed="$changed$files"
+done
+
+if [ -z "$changed" ]; then
+  echo "STT QA 게이트: STT 소스 변경 없음 → 통과"
+  exit 0
+fi
+
+echo "STT QA 게이트: STT 소스 변경 감지 → 최신 결과지 검사"
+node scripts/qa/gate.mjs

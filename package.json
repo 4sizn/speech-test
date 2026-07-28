@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "devDependencies": {
     "@types/node": "^26.1.2",
+    "puppeteer-core": "^25.4.0",
     "typescript": "^7.0.2",
     "vite": "^8.1.5"
   },
@@ -13,7 +14,11 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "assets": "node scripts/fetch-local-assets.mjs"
+    "assets": "node scripts/fetch-local-assets.mjs",
+    "qa:samples": "node scripts/qa/select-samples.mjs",
+    "qa:stt": "node scripts/qa/run.mjs",
+    "qa:gate": "node scripts/qa/gate.mjs",
+    "qa:hooks": "git config core.hooksPath .githooks"
   },
   "type": "module",
   "dependencies": {

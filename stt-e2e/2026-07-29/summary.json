@@ -1,0 +1,251 @@
+{
+  "stamp": "2026-07-29",
+  "env": {
+    "at": "2026-07-28T17:03:30.801Z",
+    "commit": "33be282",
+    "dirty": true,
+    "profile": "quick",
+    "snapshot": {
+      "chrome": "Chrome/150.0.7871.187",
+      "assets": {
+        "Xenova/whisper-base": true
+      },
+      "servers": {
+        "8765": "reused",
+        "8766": "reused",
+        "8767": "reused"
+      },
+      "dataset": "aihub_call_center_dataset (AI Hub 상황별음성 상담 음성 / KtelSpeech)",
+      "samples": 10,
+      "fakeMic": true
+    },
+    "sourceHashes": {
+      "package.json": "c1b08f3777c5",
+      "server/realtime_asr_server.py": "b4709a0fb169",
+      "src/core/AudioPcmTap.ts": "5c04d1c3b157",
+      "src/core/EventBus.ts": "ccc870ebb85a",
+      "src/core/ProviderRegistry.ts": "84e1a35d35d0",
+      "src/core/SttEngine.ts": "1f07c049da57",
+      "src/core/SttProvider.ts": "0ad91656a7fc",
+      "src/core/cer.ts": "d462c3123f08",
+      "src/core/events.ts": "c97d2242ef20",
+      "src/providers/FunAsrProvider.ts": "f445e8734eeb",
+      "src/providers/Qwen3Provider.ts": "114f77b8891d",
+      "src/providers/SenseVoiceProvider.ts": "6864951abd6b",
+      "src/providers/StreamingAsrProvider.ts": "256f600ea4ef",
+      "src/providers/WebSpeechProvider.ts": "5cc14b3b4dd5",
+      "src/providers/WhisperWasmProvider.ts": "400252420c19",
+      "vite.config.ts": "32419d7ae4c0"
+    },
+    "envLine": ":8765 reused · :8766 reused · :8767 reused · 샘플 10"
+  },
+  "rows": [
+    {
+      "feature": "whisper-base-file",
+      "samples": 10,
+      "cerAvg": 0.3058,
+      "cerMedian": 0.2722,
+      "cerWorst": 0.6111,
+      "msAvg": 15424,
+      "skipped": null,
+      "note": null,
+      "tolerance": 0.02,
+      "runsInDoc": 1,
+      "prev": null
+    },
+    {
+      "feature": "whisper-base-mic",
+      "samples": 8,
+      "cerAvg": 0.2584,
+      "cerMedian": 0.1883,
+      "cerWorst": 0.5833,
+      "msAvg": 7603,
+      "skipped": null,
+      "note": null,
+      "tolerance": 0.02,
+      "runsInDoc": 1,
+      "prev": null
+    },
+    {
+      "feature": "streaming-file",
+      "samples": 10,
+      "cerAvg": 0.255,
+      "cerMedian": 0.2389,
+      "cerWorst": 0.6389,
+      "msAvg": 13638,
+      "skipped": null,
+      "note": null,
+      "tolerance": 0.02,
+      "runsInDoc": 1,
+      "prev": null
+    },
+    {
+      "feature": "streaming-mic",
+      "samples": 8,
+      "cerAvg": 0.2783,
+      "cerMedian": 0.1883,
+      "cerWorst": 0.7222,
+      "msAvg": 6492,
+      "skipped": null,
+      "note": null,
+      "tolerance": 0.02,
+      "runsInDoc": 1,
+      "prev": null
+    },
+    {
+      "feature": "sensevoice-file",
+      "samples": 10,
+      "cerAvg": 0.1622,
+      "cerMedian": 0.1558,
+      "cerWorst": 0.3952,
+      "msAvg": 13681,
+      "skipped": null,
+      "note": null,
+      "tolerance": 0.02,
+      "runsInDoc": 1,
+      "prev": null
+    },
+    {
+      "feature": "sensevoice-mic",
+      "samples": 8,
+      "cerAvg": 0.1081,
+      "cerMedian": 0.1193,
+      "cerWorst": 0.2222,
+      "msAvg": 7051,
+      "skipped": null,
+      "note": null,
+      "tolerance": 0.02,
+      "runsInDoc": 1,
+      "prev": null
+    },
+    {
+      "feature": "funasr-file",
+      "samples": 10,
+      "cerAvg": 0.9958,
+      "cerMedian": 1,
+      "cerWorst": 1,
+      "msAvg": 13522,
+      "skipped": null,
+      "note": "중국어 전용 모델 — 절대 CER 무의미, 회귀 감지용",
+      "tolerance": 0.02,
+      "runsInDoc": 1,
+      "prev": null
+    },
+    {
+      "feature": "webspeech-file",
+      "samples": 8,
+      "cerAvg": 0.0619,
+      "cerMedian": 0.0744,
+      "cerWorst": 0.1111,
+      "msAvg": 6166,
+      "skipped": null,
+      "note": "클라우드 인식 — 실행마다 흔들린다",
+      "tolerance": 0.05,
+      "runsInDoc": 1,
+      "prev": null
+    },
+    {
+      "feature": "webspeech-mic",
+      "samples": 8,
+      "cerAvg": 0.0536,
+      "cerMedian": 0.0318,
+      "cerWorst": 0.1579,
+      "msAvg": 6153,
+      "skipped": null,
+      "note": "클라우드 인식 · 파일 주입 가짜 마이크",
+      "tolerance": 0.05,
+      "runsInDoc": 1,
+      "prev": null
+    },
+    {
+      "feature": "qwen3-file",
+      "samples": 0,
+      "cerAvg": null,
+      "cerMedian": null,
+      "cerWorst": null,
+      "msAvg": null,
+      "skipped": "Qwen3 미설정 — 설정 패널에서 endpoint / apiKey 입력 필요",
+      "note": "자격 미설정이면 SKIP",
+      "tolerance": 0.05,
+      "runsInDoc": 1,
+      "prev": null
+    }
+  ],
+  "verdicts": [
+    {
+      "feature": "whisper-base-file",
+      "verdict": "NEW",
+      "baseline": null,
+      "cerAvg": 0.3058,
+      "reason": "기준선 없음"
+    },
+    {
+      "feature": "whisper-base-mic",
+      "verdict": "NEW",
+      "baseline": null,
+      "cerAvg": 0.2584,
+      "reason": "기준선 없음"
+    },
+    {
+      "feature": "streaming-file",
+      "verdict": "NEW",
+      "baseline": null,
+      "cerAvg": 0.255,
+      "reason": "기준선 없음"
+    },
+    {
+      "feature": "streaming-mic",
+      "verdict": "NEW",
+      "baseline": null,
+      "cerAvg": 0.2783,
+      "reason": "기준선 없음"
+    },
+    {
+      "feature": "sensevoice-file",
+      "verdict": "NEW",
+      "baseline": null,
+      "cerAvg": 0.1622,
+      "reason": "기준선 없음"
+    },
+    {
+      "feature": "sensevoice-mic",
+      "verdict": "NEW",
+      "baseline": null,
+      "cerAvg": 0.1081,
+      "reason": "기준선 없음"
+    },
+    {
+      "feature": "funasr-file",
+      "verdict": "NEW",
+      "baseline": null,
+      "cerAvg": 0.9958,
+      "reason": "기준선 없음"
+    },
+    {
+      "feature": "webspeech-file",
+      "verdict": "NEW",
+      "baseline": null,
+      "cerAvg": 0.0619,
+      "reason": "기준선 없음"
+    },
+    {
+      "feature": "webspeech-mic",
+      "verdict": "NEW",
+      "baseline": null,
+      "cerAvg": 0.0536,
+      "reason": "기준선 없음"
+    },
+    {
+      "feature": "qwen3-file",
+      "verdict": "SKIP",
+      "baseline": null,
+      "cerAvg": null,
+      "reason": "Qwen3 미설정 — 설정 패널에서 endpoint / apiKey 입력 필요"
+    }
+  ],
+  "overall": {
+    "pass": true,
+    "failed": [],
+    "message": "모든 기능이 기준선 이하"
+  }
+}

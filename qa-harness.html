@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>STT E2E 하네스</title>
+    <style>
+      body { font: 13px/1.6 ui-monospace, monospace; background: #0a0c10; color: #d8e0ea; padding: 16px; }
+      h1 { font-size: 15px; color: #c6ff3a; }
+      #log { white-space: pre-wrap; }
+      .audio-wrap { position: fixed; right: 12px; bottom: 12px; opacity: 0.5; }
+    </style>
+  </head>
+  <body>
+    <h1>STT E2E 하네스</h1>
+    <p>QA 러너가 구동한다. 결과는 QA 서버(:8899)로 POST된다.</p>
+    <!--
+      러너는 이 버튼을 실제로 클릭해 순회를 시작한다. 클릭이 user activation을 만들어
+      autoplay 정책과 무관하게 <audio>.play()가 허용된다 — 브라우저 플래그에만 의존하지 않는다.
+      (?run=1로 열면 클릭 없이 자동 시작)
+    -->
+    <button id="start" type="button">순회 시작</button>
+    <div id="log"></div>
+    <!-- 엔진이 붙는 재생 엘리먼트(파일 모드) — 사람이 누를 재생 버튼은 필요 없다 -->
+    <div class="audio-wrap"><audio id="audio" controls preload="metadata"></audio></div>
+    <script type="module" src="./src/qa/harness.ts"></script>
+  </body>
+</html>
