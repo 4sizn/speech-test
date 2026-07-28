@@ -12,11 +12,17 @@ STT 도메인에 적용한 골자다. 소스는 **strict TypeScript**(`src/`), �
 
 ```bash
 bun install          # 또는 npm install
+npm run assets       # local-client 자산 준비(Whisper 모델·ORT WASM·웹폰트 → public/) — 최초 1회
 npm run dev          # Vite dev 서버 → http://localhost:5173
 npm run typecheck    # tsc --noEmit
 npm run build        # 타입체크 + 프로덕션 빌드 → dist/
 npm run preview      # dist/ 미리보기
 ```
+
+> `npm run assets`(`scripts/fetch-local-assets.mjs`)는 Whisper 모델 3종(tiny/base/small)을 받아
+> `public/models`에 두고, ONNX WASM 런타임(`/ort`)과 웹폰트(`/fonts`)를 자체 서빙 경로로 복사한다.
+> 이후 앱은 **외부 도메인 접근 없이(same-origin만)** 동작한다. 특정 모델만 받으려면 모델 ID를
+> 인자로, WebGPU용 fp32 가중치까지 받으려면 `--webgpu`를 붙인다.
 
 브라우저는 **Chrome / Edge** 권장(Web Speech API). Firefox는 SpeechRecognition 미지원.
 
@@ -46,8 +52,8 @@ npm run preview      # dist/ 미리보기
                 │
    ┌────────────┬──────────┴───┬──────────────┐
    ▼            ▼              ▼              ▼
-WebSpeech    Whisper       Streaming        Qwen3
-(mic/루프백) (로컬WASM/GPU) (클라우드WS)    (클라우드HTTP)
+WebSpeech    Whisper          Streaming        Qwen3
+(mic/루프백) (클라이언트WASM) (클라우드WS)    (클라우드HTTP)
                 └──────┬───────┘
         core/AudioPcmTap (+ worklets/pcm-processor)
         MediaStream → 16kHz PCM 공통 캡처 (Whisper/Streaming 공유)
@@ -71,14 +77,27 @@ WebSpeech    Whisper       Streaming        Qwen3
 | Provider | 마이크 | 파일 | 방식 / 비고 |
 |---|---|---|---|
 | **WebSpeech** | ✅ 네이티브 실시간 | ✅ 디지털 트랙 입력 | `start(MediaStreamTrack)` (Chrome ~M133+). captureStream 트랙을 직접 인식 → 노이즈/볼륨 무관 |
-| **Whisper** | ✅ 근실시간 | ✅ 근실시간 | 로컬 WASM/WebGPU(transformers.js). 키 불필요, 최초 모델 다운로드 |
+| **Whisper** | ✅ 근실시간 | ✅ 근실시간 | 클라이언트 WASM/WebGPU(transformers.js 번들). 키·외부 도메인 불필요 — 자산은 `npm run assets`로 자체 서빙 |
 | **Streaming** | ✅ 실시간 | ✅ 실시간 | 클라우드 WebSocket(PCM 청크 전송). 엔드포인트/키 필요 (골자) |
 | **Qwen3** | ✅ 청크(골자) | ✅ 파일 전송 | 클라우드 HTTP 업로드. endpoint/model/apiKey 필요 (골자) |
+
+### 실행 위치(RuntimeLocation)
+
+Provider는 인식이 실제로 일어나는 위치를 선언하고(`static locations`), UI는 미지원 위치를 비활성화한다.
+
+- **`local-client`** — 클라이언트 자체 CPU/GPU로 처리해 결과를 낸다(서버 전송 없음). 코드/모델
+  자산도 별도 도메인 없이 자체 출처(same-origin)에서 받아 관리한다. Whisper가 여기 해당:
+  transformers.js는 npm 번들, 모델은 `/models`, ORT WASM은 `/ort`에서 로드.
+- **`remote-onpremise`** — 사내(자체 구축) 서버로 전송해 처리 (Streaming)
+- **`remote-cloud`** — 외부 클라우드 서비스로 전송해 처리 (WebSpeech 기본 · Streaming · Qwen3)
+
+WebSpeech에서 `local-client` 선택 시 Chrome 온디바이스(SODA, `processLocally`) 인식을 쓴다.
 
 > **파일 audiotrack 실시간 STT 파이프라인** (루프백 없이):
 > `<audio> 재생 → audio.captureStream() → audio MediaStreamTrack → Provider`
 > 모든 Provider가 이 디지털 트랙을 받는다(WebSpeech는 `start(track)`, Whisper/Streaming은 `AudioPcmTap`으로 16kHz PCM 변환).
 > 음향(스피커→마이크)을 안 거치므로 주변 소음/볼륨과 무관하다.
+> 엔진은 Provider의 `prepare()`(모델 로드 등 무거운 준비)가 끝난 **뒤에** 재생을 시작한다 — 준비 중 재생으로 파일 앞부분이 잘리지 않는다.
 
 ### WebSpeech로 파일을 노이즈/볼륨 없이 인식하기 (순수 JS — 1순위, 검증됨)
 
@@ -179,7 +198,7 @@ CER 산출 주의점(코드에 반영됨):
 ## 알려진 제약 / TODO
 
 - **WebSpeech 파일 인식**: `start(MediaStreamTrack)`(Chrome ~M133+)으로 captureStream 트랙을 직접 인식 → 가능·노이즈/볼륨 무관(검증됨). Chromium 데스크톱 전용, 미지원 시 Whisper 폴백.
-- **Whisper(로컬)**: transformers.js를 CDN에서 동적 import(네트워크 필요), 모델 최초 다운로드(수십~수백MB). `Xenova/whisper-tiny`는 가볍지만 정확도 낮음 → 한국어는 `whisper-base`+ 권장. 청크 단위 인식이라 청크 경계 지연 있음.
+- **Whisper(local-client)**: 코드/모델/WASM 런타임 전부 same-origin 자산 — 최초 1회 `npm run assets` 필요(미준비 시 안내 에러). 멀티스레드 WASM은 COOP/COEP(`credentialless`) 헤더 필요 — vite dev/preview에는 설정돼 있고, 미적용 호스팅에서는 단일 스레드로 폴백. WebGPU는 fp32 가중치(`npm run assets -- --webgpu`)가 있을 때만 시도. `Xenova/whisper-tiny`는 가볍지만 정확도 낮음 → 한국어는 `whisper-base`+ 권장. 청크 단위 인식이라 청크 경계 지연 있음.
 - **Streaming(클라우드)**: 벤더별 핸드셰이크/오디오 포맷/응답 스키마가 달라 `#onOpen`/`#send`/`#onMessage`를 실제 스펙에 맞춰야 함(코드 내 `TODO`).
 - **Qwen3(클라우드 HTTP)**: 요청/응답 스키마·모델 id는 제공자 문서에 맞춰 `#transcribeFile`/`#streamMic` 조정 필요.
 - `qwen3-tts`는 TTS(텍스트→음성)이고, 이 페이지 목적인 STT에는 ASR 모델이 맞다.
