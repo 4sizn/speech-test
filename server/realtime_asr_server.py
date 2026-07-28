@@ -14,10 +14,12 @@
 엔진:
   faster-whisper : 발화 버퍼를 주기 재전사해 partial, RMS 무음 경계에서 final. (ko/en/ja/zh …)
   funasr         : paraformer-zh-streaming 증분 디코딩(진짜 스트리밍). (zh 전용)
+  sensevoice     : SenseVoiceSmall 재전사 방식 — 호출당 고정비용 ≈1s(CPU)라 partial 주기 1.2s. (ko/ja/en/zh/yue)
 
 사용:
   python3 realtime_asr_server.py --engine faster-whisper --model base --port 8765
   python3 realtime_asr_server.py --engine funasr --port 8766
+  python3 realtime_asr_server.py --engine sensevoice --port 8767
 
 모델은 최초 1회 server/models/ 아래로 내려받아 자체 관리한다(이후 오프라인 동작).
 """
@@ -43,7 +45,7 @@ os.environ.setdefault("MODELSCOPE_CACHE", str(MODELS_DIR / "funasr"))
 # RMS 기반 무음 판정 — captureStream/마이크 무레벨 구간 감지용
 SILENCE_RMS = 0.008
 SILENCE_FINALIZE_SEC = 0.9  # 이만큼 무음이 이어지면 발화 확정
-PARTIAL_INTERVAL_SEC = 0.6  # partial 재전사 주기(faster-whisper)
+PARTIAL_INTERVAL_SEC = 0.6  # partial 재전사 기본 주기 — 엔진이 PARTIAL_INTERVAL_SEC로 재정의 가능
 MAX_UTTERANCE_SEC = 25.0    # 무음이 없어도 이 길이에서 강제 확정
 
 
@@ -76,6 +78,48 @@ class FasterWhisperEngine:
             without_timestamps=True,
         )
         return "".join(s.text for s in segments).strip()
+
+
+class SenseVoiceEngine:
+    """
+    SenseVoiceSmall — 다국어(ko/ja/en/zh/yue) offline 모델. 스트리밍 API가 없어
+    faster-whisper와 같은 발화 버퍼 재전사 방식을 쓴다.
+
+    비자기회귀라 오디오 길이에는 둔감하지만 호출 1회의 고정 비용이 크다 —
+    이 환경(8코어 CPU, ncpu=4) 실측으로 입력 0.25s/0.75s/1.6s 모두 ≈1.0s.
+    그래서 partial 주기를 1.2s로 두고(PARTIAL_INTERVAL_SEC) 추론은 직렬화한다.
+    ncpu를 8로 올리면 효율코어까지 쓰며 오히려 1.7s로 느려졌다 → 기본 4 유지.
+    """
+
+    PARTIAL_INTERVAL_SEC = 1.2
+
+    def __init__(self, model_name: str, ncpu: int):
+        from funasr import AutoModel
+        from funasr.utils.postprocess_utils import emo_set, event_set, rich_transcription_postprocess
+
+        self._post = rich_transcription_postprocess
+        # 공식 후처리는 감정/이벤트 태그를 이모지로 바꿔 남긴다(😊 🎼 …) — 자막에는 불필요하므로 제거
+        self._tag_emoji = emo_set | event_set | {"❓"}
+        log.info("SenseVoice 모델 로드: %s (ncpu=%d)", model_name, ncpu)
+        self.model = AutoModel(model=model_name, disable_update=True, hub="ms", device="cpu", ncpu=ncpu)
+        log.info("모델 준비 완료")
+
+    def transcribe(self, pcm: np.ndarray, lang: str | None) -> str:
+        # language 미지원 코드는 모델이 auto(0)로 취급한다 — zh/en/yue/ja/ko 외엔 자동 판별
+        res = self.model.generate(
+            input=pcm, cache={}, language=lang or "auto", use_itn=True, disable_pbar=True
+        )
+        if not res:
+            return ""
+        # 출력에 <|ko|><|NEUTRAL|><|Speech|><|withitn|> 등 태그가 붙어 온다 → 공식 후처리로 정규화
+        text = self._post(res[0]["text"])
+        for emoji in self._tag_emoji:
+            text = text.replace(emoji, "")
+        return text.strip()
+
+    def warmup(self) -> None:
+        # 첫 호출만 그래프 초기화로 3배 느리다(실측 3.2s) — 무음으로 미리 태워 첫 발화 지연을 없앤다
+        self.transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32), None)
 
 
 class FunAsrEngine:
@@ -127,6 +171,8 @@ class Session:
         self.last_partial = ""
         self.fun_state = engine.new_stream() if engine_kind == "funasr" else None
         self.fun_pending = np.zeros(0, dtype=np.float32)
+        # 엔진이 자기 추론 비용에 맞는 주기를 선언하면 그걸 쓴다(SenseVoice=1.2s)
+        self.partial_interval = getattr(engine, "PARTIAL_INTERVAL_SEC", PARTIAL_INTERVAL_SEC)
 
     async def send(self, text: str, is_final: bool):
         if not text and not is_final:
@@ -169,11 +215,11 @@ class Session:
         if self.had_speech and self.silence_sec >= SILENCE_FINALIZE_SEC:
             await self.finalize()
 
-    # 주기 partial (faster-whisper 전용 — 현재 발화 버퍼 스냅샷 재전사)
+    # 주기 partial (재전사 엔진 전용 — 현재 발화 버퍼 스냅샷 재전사)
     async def partial_loop(self):
         if self.kind != "funasr":
             while True:
-                await asyncio.sleep(PARTIAL_INTERVAL_SEC)
+                await asyncio.sleep(self.partial_interval)
                 if not self.had_speech or len(self.buf) < SAMPLE_RATE // 2:
                     continue
                 snapshot = self.buf[-SAMPLE_RATE * 15 :]  # 최근 15초까지만
@@ -232,10 +278,14 @@ async def handle(ws, engine, engine_kind: str):
 
 async def main():
     ap = argparse.ArgumentParser(description="실시간 STT WebSocket 서버")
-    ap.add_argument("--engine", choices=["faster-whisper", "funasr"], default="faster-whisper")
-    ap.add_argument("--model", default=None, help="faster-whisper: tiny/base/small… · funasr: 모델명")
+    ap.add_argument("--engine", choices=["faster-whisper", "funasr", "sensevoice"], default="faster-whisper")
+    ap.add_argument(
+        "--model", default=None, help="faster-whisper: tiny/base/small… · funasr/sensevoice: 모델명"
+    )
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=None)
+    # 8코어 맥에서 4가 가장 빨랐다(8은 효율코어까지 써서 1.0s → 1.7s로 악화)
+    ap.add_argument("--ncpu", type=int, default=4, help="torch CPU 스레드 수 (sensevoice)")
     args = ap.parse_args()
 
     import websockets
@@ -245,9 +295,16 @@ async def main():
         # large(paraformer-zh-streaming)는 CPU에서 rtf≈2로 백로그가 쌓여 실시간 불가.
         engine = FunAsrEngine(args.model or "iic/speech_paraformer_asr_nat-zh-cn-16k-common-vocab8404-online")
         port = args.port or 8766
+    elif args.engine == "sensevoice":
+        engine = SenseVoiceEngine(args.model or "iic/SenseVoiceSmall", args.ncpu)
+        port = args.port or 8767
     else:
         engine = FasterWhisperEngine(args.model or "base")
         port = args.port or 8765
+
+    if hasattr(engine, "warmup"):
+        log.info("워밍업 추론…")
+        engine.warmup()
 
     async with websockets.serve(lambda ws: handle(ws, engine, args.engine), args.host, port, max_size=2**22):
         log.info("서버 시작: ws://%s:%d (engine=%s)", args.host, port, args.engine)

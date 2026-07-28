@@ -80,6 +80,7 @@ WebSpeech    Whisper          Streaming        Qwen3
 | **Whisper** | ✅ 근실시간 | ✅ 근실시간 | 클라이언트 WASM/WebGPU(transformers.js 번들). 키·외부 도메인 불필요 — 자산은 `npm run assets`로 자체 서빙 |
 | **Streaming** | ✅ 실시간 | ✅ 실시간 | WebSocket(16k Int16 PCM 전송 → partial/final 수신). 온프레미스 백엔드 동봉: `server/realtime_asr_server.py --engine faster-whisper` |
 | **FunASR** | ✅ 실시간 | ✅ 실시간 | paraformer-zh-streaming 증분 디코딩(중국어 전용). 백엔드: `server/… --engine funasr` — 공식 WASM 런타임이 없어 온프레미스만 |
+| **SenseVoice** | ✅ 실시간 | ✅ 실시간 | SenseVoiceSmall 다국어(**ko**/ja/en/zh/yue). 백엔드: `server/… --engine sensevoice` — offline 모델이라 증분 대신 재전사 partial(CPU 기준 ≈1.2s 간격) |
 | **Qwen3** | ✅ 청크(골자) | ✅ 파일 전송 | 클라우드 HTTP 업로드. endpoint/model/apiKey 필요 (골자) |
 
 ### 실행 위치(RuntimeLocation)
@@ -89,14 +90,14 @@ Provider는 인식이 실제로 일어나는 위치를 선언하고(`static loca
 - **`local-client`** — 클라이언트 자체 CPU/GPU로 처리해 결과를 낸다(서버 전송 없음). 코드/모델
   자산도 별도 도메인 없이 자체 출처(same-origin)에서 받아 관리한다. Whisper가 여기 해당:
   transformers.js는 npm 번들, 모델은 `/models`, ORT WASM은 `/ort`에서 로드.
-- **`remote-onpremise`** — 사내(자체 구축) 서버로 전송해 처리 (Streaming)
+- **`remote-onpremise`** — 사내(자체 구축) 서버로 전송해 처리 (Streaming · FunASR · SenseVoice)
 - **`remote-cloud`** — 외부 클라우드 서비스로 전송해 처리 (WebSpeech 기본 · Streaming · Qwen3)
 
 WebSpeech에서 `local-client` 선택 시 Chrome 온디바이스(SODA, `processLocally`) 인식을 쓴다.
 
-### 온프레미스 실시간 STT 서버 (faster-whisper / FunASR)
+### 온프레미스 실시간 STT 서버 (faster-whisper / FunASR / SenseVoice)
 
-Streaming ASR · FunASR Provider의 백엔드. 16kHz Int16 PCM을 WebSocket으로 받아
+Streaming ASR · FunASR · SenseVoice Provider의 백엔드. 16kHz Int16 PCM을 WebSocket으로 받아
 partial(`{"text","isFinal":false}`) / final(`isFinal:true`)을 실시간으로 흘려보낸다.
 모델은 최초 1회 `server/models/`로 다운로드되어 자체 관리된다(이후 오프라인 동작).
 
@@ -104,16 +105,24 @@ partial(`{"text","isFinal":false}`) / final(`isFinal:true`)을 실시간으로 �
 cd server
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt            # faster-whisper 엔진
-.venv/bin/pip install -r requirements-funasr.txt     # (선택) FunASR 엔진 — torch 포함, 용량 큼
+.venv/bin/pip install -r requirements-funasr.txt     # (선택) FunASR·SenseVoice 엔진 — torch 포함, 용량 큼
 
 .venv/bin/python realtime_asr_server.py --engine faster-whisper --model base  # ws://localhost:8765 · ko/en/ja/zh…
 .venv/bin/python realtime_asr_server.py --engine funasr                       # ws://localhost:8766 · 중국어 전용
+.venv/bin/python realtime_asr_server.py --engine sensevoice                   # ws://localhost:8767 · ko/ja/en/zh/yue
 ```
 
 - faster-whisper: 발화 버퍼를 0.6s 주기로 재전사해 partial, RMS 무음 0.9s에서 final.
 - FunASR: paraformer 스트리밍의 600ms 청크 증분 디코딩(진짜 스트리밍) — 부분 결과가 누적된다.
   기본 모델은 non-large(CPU에서 rtf<1 실시간). large(`--model paraformer-zh-streaming`)는 정확도가
   높지만 CPU에서 rtf≈2로 백로그가 쌓여 실시간 불가 — GPU 서버에서만 권장.
+  ⚠ 중국어 단일 언어 모델(vocab8404)이라 **한국어를 넣으면 중국어 음절로 강제 매핑**된다 → 한국어는 SenseVoice/faster-whisper.
+- SenseVoice: `iic/SenseVoiceSmall`(≈936MB) — 한국어 공식 지원(모델 `lid_dict`에 `ko`). 스트리밍
+  API가 없는 offline 모델이라 faster-whisper와 같은 재전사 방식으로 partial을 만든다.
+  언어는 UI의 언어 선택값(`ko-KR`→`ko`)을 그대로 쓰고, 미지원 코드는 모델이 auto로 판별한다.
+  비자기회귀라 오디오 길이에는 둔감한데 **호출 1회의 고정 비용이 크다** — 8코어 맥 CPU(ncpu=4)
+  실측으로 입력 0.25s/0.75s/1.6s 모두 ≈1.0s. 그래서 partial 주기는 1.2s(faster-whisper는 0.6s)이고,
+  자막 갱신 간격도 그만큼 길다. `--ncpu 8`은 효율코어까지 써서 1.7s로 **악화**됐다 → 기본 4.
 
 > **파일 audiotrack 실시간 STT 파이프라인** (루프백 없이):
 > `<audio> 재생 → audio.captureStream() → audio MediaStreamTrack → Provider`
@@ -222,6 +231,7 @@ CER 산출 주의점(코드에 반영됨):
 - **WebSpeech 파일 인식**: `start(MediaStreamTrack)`(Chrome ~M133+)으로 captureStream 트랙을 직접 인식 → 가능·노이즈/볼륨 무관(검증됨). Chromium 데스크톱 전용, 미지원 시 Whisper 폴백.
 - **Whisper(local-client)**: 코드/모델/WASM 런타임 전부 same-origin 자산 — 최초 1회 `npm run assets` 필요(미준비 시 안내 에러). 멀티스레드 WASM은 COOP/COEP(`credentialless`) 헤더 필요 — vite dev/preview에는 설정돼 있고, 미적용 호스팅에서는 단일 스레드로 폴백. WebGPU는 fp32 가중치(`npm run assets -- --webgpu`)가 있을 때만 시도. `Xenova/whisper-tiny`는 가볍지만 정확도 낮음 → 한국어는 `whisper-base`+ 권장. 청크 단위 인식이라 청크 경계 지연 있음.
 - **Streaming**: 동봉된 온프레미스 서버(`server/realtime_asr_server.py`)의 프로토콜이 기본값. 외부 클라우드 벤더에 붙이려면 `#onOpen`/`#send`/`#onMessage`를 해당 스펙에 맞춰 조정.
-- **FunASR**: 기본 모델(paraformer-zh-streaming)이 중국어 전용 — 한국어 실시간은 Streaming(faster-whisper)을 사용. 공식 브라우저(WASM) 런타임이 없어 실행 위치는 온프레미스만.
+- **FunASR**: 기본 모델(paraformer-zh-streaming)이 중국어 전용 — 한국어 실시간은 SenseVoice 또는 Streaming(faster-whisper)을 사용. 공식 브라우저(WASM) 런타임이 없어 실행 위치는 온프레미스만.
+- **SenseVoice**: 다국어(ko/ja/en/zh/yue)지만 offline 모델이라 FunASR paraformer 같은 증분 스트리밍은 아니다(무음 경계 확정 + 주기 재전사 partial). 모델 ≈936MB 최초 다운로드 필요. 공식 브라우저 런타임 미사용 — 실행 위치는 온프레미스만.
 - **Qwen3(클라우드 HTTP)**: 요청/응답 스키마·모델 id는 제공자 문서에 맞춰 `#transcribeFile`/`#streamMic` 조정 필요.
 - `qwen3-tts`는 TTS(텍스트→음성)이고, 이 페이지 목적인 STT에는 ASR 모델이 맞다.

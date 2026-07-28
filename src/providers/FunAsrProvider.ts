@@ -20,7 +20,7 @@ export class FunAsrProvider extends StreamingAsrProvider {
       label: 'WebSocket URL',
       default: 'ws://localhost:8766',
       placeholder: 'ws://localhost:8766',
-      hint: '온프레미스 백엔드: server/realtime_asr_server.py --engine funasr (기본 포트 8766) — 기본 모델은 중국어 전용',
+      hint: '온프레미스 백엔드: server/realtime_asr_server.py --engine funasr (기본 포트 8766) — 기본 모델은 중국어 전용(한국어는 SenseVoice Provider)',
     },
   ];
 }
