@@ -195,6 +195,8 @@ export class SttEngine {
       await this.#provider.prepare();
       if (!this.#active) return; // 준비 중 사용자가 중지함
       const input = await this.#buildInput();
+      // 입력 조립 중에도 중지될 수 있다(재생 대기 중 초단파일 즉시 종료 등) — 고아 시작 방지
+      if (!this.#active) return;
       await this.#provider.start(input);
     } catch (err) {
       // 준비/입력조립/시작 어느 단계의 실패든 RECOGNITION_ERROR로 정규화(busy UI 복구)하고 재던진다

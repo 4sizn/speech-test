@@ -42,29 +42,40 @@ export class AudioPcmTap {
   async start(): Promise<void> {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) throw new Error('AudioContext 미지원 환경입니다');
-    this.#ctx = new Ctx();
-    if (this.#ctx.state === 'suspended') await this.#ctx.resume();
+    const ctx = new Ctx();
+    this.#ctx = ctx;
+    if (ctx.state === 'suspended') await ctx.resume();
 
-    await this.#ctx.audioWorklet.addModule(pcmWorkletUrl);
+    await ctx.audioWorklet.addModule(pcmWorkletUrl);
 
-    const frameSize = Math.max(256, Math.round((this.#ctx.sampleRate * this.#frameMs) / 1000));
-    this.#source = this.#ctx.createMediaStreamSource(this.#stream);
-    this.#node = new AudioWorkletNode(this.#ctx, 'pcm-processor', {
+    // 위 await들 사이에 stop()이 불렸으면(#ctx가 이 ctx가 아님) 조용히 철수 — null 역참조 경합 방지
+    if (this.#ctx !== ctx) {
+      try {
+        await ctx.close();
+      } catch {
+        /* noop */
+      }
+      return;
+    }
+
+    const frameSize = Math.max(256, Math.round((ctx.sampleRate * this.#frameMs) / 1000));
+    this.#source = ctx.createMediaStreamSource(this.#stream);
+    this.#node = new AudioWorkletNode(ctx, 'pcm-processor', {
       processorOptions: { frameSize },
     });
 
-    const fromRate = this.#ctx.sampleRate;
+    const fromRate = ctx.sampleRate;
     this.#node.port.onmessage = (e: MessageEvent<Float32Array>) => {
       const pcm = resampleLinear(e.data, fromRate, this.#targetRate);
       this.#onFrame(pcm);
     };
 
     // node.process()가 호출되도록 그래프를 destination까지 잇되, gain 0으로 무음 처리
-    this.#mute = this.#ctx.createGain();
+    this.#mute = ctx.createGain();
     this.#mute.gain.value = 0;
     this.#source.connect(this.#node);
     this.#node.connect(this.#mute);
-    this.#mute.connect(this.#ctx.destination);
+    this.#mute.connect(ctx.destination);
   }
 
   async stop(): Promise<void> {
