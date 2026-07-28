@@ -1,17 +1,21 @@
 {
   "name": "speech-test",
   "version": "0.1.0",
-  "private": true,
-  "type": "module",
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5"
+  },
   "description": "Provider 주입형 실시간 STT 콘솔 — Web Speech API / Qwen3 ASR",
+  "private": true,
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "assets": "node scripts/fetch-local-assets.mjs"
   },
-  "devDependencies": {
-    "typescript": "^7.0.2",
-    "vite": "^8.1.5"
+  "type": "module",
+  "dependencies": {
+    "@huggingface/transformers": "^3"
   }
 }

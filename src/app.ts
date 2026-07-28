@@ -210,7 +210,7 @@ function reflectProvider({ provider, label, capabilities, configSchema, fileInpu
 }
 
 const LOCATION_LABEL: Record<RuntimeLocation, string> = {
-  local: '로컬 (온디바이스)',
+  'local-client': '로컬(클라이언트) · 자체 CPU/GPU 처리',
   'remote-onpremise': '온프레미스 (사내 서버)',
   'remote-cloud': '클라우드',
 };
@@ -248,6 +248,13 @@ async function populateSinks(): Promise<void> {
   if (prev) el.sinkSelect.value = prev;
 }
 
+function makeFieldHint(text: string): HTMLSpanElement {
+  const hint = document.createElement('span');
+  hint.className = 'field-hint';
+  hint.textContent = text;
+  return hint;
+}
+
 function renderSettings(providerId: string, label: string, schema: readonly ConfigField[] = []): void {
   el.settings.innerHTML = '';
   if (!schema.length) {
@@ -266,13 +273,41 @@ function renderSettings(providerId: string, label: string, schema: readonly Conf
   const collect = (): ProviderConfig => {
     const values: ProviderConfig = { ...loadCfg(providerId) };
     for (const f of schema) {
-      const node = $<HTMLInputElement>(`cfg-${f.key}`);
-      values[f.key] = f.type === 'checkbox' ? node.checked : node.value.trim();
+      const node = $<HTMLInputElement | HTMLSelectElement>(`cfg-${f.key}`);
+      values[f.key] = f.type === 'checkbox' ? (node as HTMLInputElement).checked : node.value.trim();
     }
     return values;
   };
 
   for (const f of schema) {
+    if (f.type === 'select') {
+      const wrap = document.createElement('label');
+      wrap.className = 'field mini';
+      const name = document.createElement('span');
+      name.className = 'field-label';
+      name.textContent = f.label;
+      const select = document.createElement('select');
+      select.className = 'select';
+      select.id = `cfg-${f.key}`;
+      for (const o of f.options ?? []) {
+        const opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        select.appendChild(opt);
+      }
+      select.value = String(cfg[f.key] ?? f.default ?? '');
+      // 선택 즉시 적용(체크박스와 동일 UX) — 실제 모델 로드는 다음 인식 시작 시점
+      select.addEventListener('change', () => {
+        const values = collect();
+        saveCfg(providerId, values);
+        engine.configureProvider(values);
+        setStatus(`${f.label} → ${select.selectedOptions[0]?.textContent ?? select.value}`, 'ok');
+      });
+      wrap.append(name, select);
+      if (f.hint) wrap.appendChild(makeFieldHint(f.hint));
+      el.settings.appendChild(wrap);
+      continue;
+    }
     if (f.type === 'checkbox') {
       const row = document.createElement('label');
       row.className = 'check-row';
@@ -306,11 +341,12 @@ function renderSettings(providerId: string, label: string, schema: readonly Conf
     input.value = String(cfg[f.key] ?? '');
     if (f.type === 'password') input.autocomplete = 'new-password';
     wrap.append(name, input);
+    if (f.hint) wrap.appendChild(makeFieldHint(f.hint));
     el.settings.appendChild(wrap);
   }
 
-  // 텍스트 필드가 있을 때만 저장 버튼(체크박스 전용이면 즉시 적용)
-  if (schema.some((f) => f.type !== 'checkbox')) {
+  // 텍스트 필드가 있을 때만 저장 버튼(체크박스/셀렉트는 즉시 적용)
+  if (schema.some((f) => f.type !== 'checkbox' && f.type !== 'select')) {
     const save = document.createElement('button');
     save.type = 'button';
     save.className = 'btn ghost';

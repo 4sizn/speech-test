@@ -2,7 +2,7 @@ import { SttProvider, type ConfigField, type ProviderConfig, type RuntimeLocatio
 import { SystemEvent, Mode } from '../core/events';
 
 interface WebSpeechConfig extends ProviderConfig {
-  /** @deprecated location('local')으로 대체. 과거 저장값 호환용으로만 읽는다. */
+  /** @deprecated location('local-client')으로 대체. 과거 저장값 호환용으로만 읽는다. */
   processLocally?: boolean;
 }
 
@@ -30,8 +30,8 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
   static override readonly capabilities: readonly Mode[] = [Mode.MIC, Mode.FILE];
   // 파일 트랙을 captureStream으로 디지털 캡처해 start(track)로 주입 (음향 루프백 폐기)
   static override readonly fileInputKind = 'stream';
-  // 기본은 브라우저 벤더 클라우드 인식, local 선택 시 온디바이스(processLocally) 인식
-  static override readonly locations: readonly RuntimeLocation[] = ['remote-cloud', 'local'];
+  // 기본은 브라우저 벤더 클라우드 인식, local-client 선택 시 클라이언트 온디바이스(processLocally) 인식
+  static override readonly locations: readonly RuntimeLocation[] = ['remote-cloud', 'local-client'];
   static override readonly configSchema: readonly ConfigField[] = [];
 
   static override isSupported(): boolean {
@@ -136,10 +136,10 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
       }
     };
 
-    // 오프라인(온디바이스) 모드 — 실행 위치가 local이면 활성 (과거 processLocally 저장값 호환)
+    // 오프라인(클라이언트 온디바이스) 모드 — 실행 위치가 local-client면 활성 (과거 processLocally 저장값 호환)
     // 모델 가용성 확인 후 필요시 설치, 불가하면 온라인 폴백
     let offline = this.config.location
-      ? this.location === 'local'
+      ? this.location === 'local-client'
       : Boolean(this.config.processLocally);
     if (offline) {
       const ok = await this.#ensureLocalModel(rec.lang);

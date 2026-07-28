@@ -27,7 +27,7 @@ export class Qwen3Provider extends SttProvider<Qwen3Config> {
   static override readonly label = 'Qwen3 ASR (cloud, 파일전송)';
   static override readonly capabilities: readonly Mode[] = [Mode.FILE, Mode.MIC];
   static override readonly fileInputKind = 'upload'; // 원본 File을 그대로 업로드
-  // DashScope 클라우드 API 전용 — 로컬/온프레미스 배포 경로 없음
+  // DashScope 클라우드 API 전용 — 로컬(클라이언트)/온프레미스 배포 경로 없음
   static override readonly locations: readonly RuntimeLocation[] = ['remote-cloud'];
   static override readonly configSchema: readonly ConfigField[] = [
     { key: 'endpoint', label: 'Endpoint URL', type: 'url', placeholder: 'https://...' },

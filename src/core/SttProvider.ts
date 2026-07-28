@@ -34,9 +34,13 @@ export interface SttInput {
 export interface ConfigField {
   key: string;
   label: string;
-  type?: 'text' | 'url' | 'password' | 'checkbox';
+  type?: 'text' | 'url' | 'password' | 'checkbox' | 'select';
   placeholder?: string;
   default?: string | boolean;
+  /** type='select'일 때의 선택지. */
+  options?: readonly { value: string; label: string }[];
+  /** 필드 아래 렌더되는 부가 설명 — 오해 소지가 있는 필드(자산 다운로드 URL 등)의 의미 명시용. */
+  hint?: string;
 }
 
 /**
@@ -49,11 +53,12 @@ export type FileInputKind = 'stream' | 'loopback' | 'upload';
 
 /**
  * 인식 처리가 실제로 일어나는 실행 위치.
- *  - 'local'            : 브라우저/디바이스 내에서 처리 (서버 전송 없음)
+ *  - 'local-client'     : 클라이언트 자체 CPU/GPU로 처리해 결과를 낸다 (서버 전송 없음).
+ *                         코드/모델 자산도 별도 도메인 없이 자체 출처(same-origin)에서 받아 관리한다.
  *  - 'remote-onpremise' : 사내(자체 구축) 서버로 전송해 처리
  *  - 'remote-cloud'     : 외부 클라우드 서비스로 전송해 처리
  */
-export type RuntimeLocation = 'local' | 'remote-onpremise' | 'remote-cloud';
+export type RuntimeLocation = 'local-client' | 'remote-onpremise' | 'remote-cloud';
 
 /** Provider별 설정(엔드포인트/키/언어 등). 서브클래스가 구체 필드로 확장한다. */
 export interface ProviderConfig {
@@ -96,7 +101,7 @@ export abstract class SttProvider<C extends ProviderConfig = ProviderConfig> {
   static readonly configSchema: readonly ConfigField[] = [];
   static readonly fileInputKind: FileInputKind = 'stream';
   /** 지원하는 실행 위치 목록. 첫 항목이 기본값. UI는 미포함 항목을 비활성화한다. */
-  static readonly locations: readonly RuntimeLocation[] = ['local'];
+  static readonly locations: readonly RuntimeLocation[] = ['local-client'];
 
   /** 런타임 지원 여부. 브라우저 API 의존 Provider가 override. */
   static isSupported(): boolean {
@@ -140,11 +145,12 @@ export abstract class SttProvider<C extends ProviderConfig = ProviderConfig> {
     return this.#static().locations;
   }
 
-  /** 현재 실행 위치(설정값 없으면 첫 지원 위치). */
+  /** 현재 실행 위치(설정값 없으면 첫 지원 위치). 과거 저장값 'local'/'local(client)'은 'local-client'로 읽는다. */
   get location(): RuntimeLocation {
-    const loc = this.config.location;
+    const raw = this.config.location as RuntimeLocation | 'local' | 'local(client)' | undefined;
+    const loc = raw === 'local' || raw === 'local(client)' ? 'local-client' : raw;
     if (loc && this.locations.includes(loc)) return loc;
-    return this.locations[0] ?? 'local';
+    return this.locations[0] ?? 'local-client';
   }
 
   /** 모드 지원 여부. */

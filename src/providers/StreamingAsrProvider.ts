@@ -22,7 +22,7 @@ export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
   static override readonly id = 'streaming';
   static override readonly label = 'Cloud Streaming ASR (WebSocket)';
   static override readonly capabilities: readonly Mode[] = [Mode.FILE, Mode.MIC];
-  // WebSocket 엔드포인트가 클라우드든 사내 자체 서버든 동일 프로토콜 — 둘 다 지원 (로컬 처리 없음)
+  // WebSocket 엔드포인트가 클라우드든 사내 자체 서버든 동일 프로토콜 — 둘 다 지원 (로컬(클라이언트) 처리 없음)
   static override readonly locations: readonly RuntimeLocation[] = ['remote-cloud', 'remote-onpremise'];
   static override readonly configSchema: readonly ConfigField[] = [
     { key: 'wsEndpoint', label: 'WebSocket URL', placeholder: 'wss://...' },

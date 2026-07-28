@@ -8,19 +8,15 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23c6ff3a'/%3E%3Crect x='9' y='9' width='14' height='14' rx='3' fill='%230a0c10'/%3E%3C/svg%3E"
     />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <!-- 웹폰트도 자체 서빙(local-client 원칙) — npm run assets가 public/fonts를 생성 -->
+    <link href="/fonts/fonts.css" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="grain" aria-hidden="true"></div>
 
     <div id="secure-banner" class="banner" hidden>
-      ⚠ 마이크 / 음성인식은 <b>https</b> 또는 <b>localhost</b>에서만 동작합니다. 로컬 서버로 열어주세요.
+      ⚠ 마이크 / 음성인식은 <b>https</b> 또는 <b>localhost</b>에서만 동작합니다. 개발 서버(localhost)로 열어주세요.
     </div>
 
     <header class="topbar">
@@ -55,7 +51,7 @@
         <div class="field">
           <span class="field-label">실행 위치</span>
           <div class="segmented" role="group" aria-label="실행 위치">
-            <button type="button" class="seg" data-location="local">💻 로컬</button>
+            <button type="button" class="seg" data-location="local-client">💻 로컬(클라이언트)</button>
             <button type="button" class="seg" data-location="remote-onpremise">🏢 온프레미스</button>
             <button type="button" class="seg" data-location="remote-cloud">☁ 클라우드</button>
           </div>

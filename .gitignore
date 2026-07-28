@@ -11,3 +11,8 @@ bun.lockb
 
 # 임시 스크린샷
 _screen.png
+
+# local-client 자산 (npm run assets 로 생성 — 커밋하지 않음)
+public/ort/
+public/models/
+public/fonts/

@@ -262,13 +262,26 @@ body {
 .field .cap-hint {
   margin: 7px 0 0;
 }
+/* 설정 필드 아래 부가 설명 — field-label의 uppercase/자간을 상속받지 않는 본문형 미세 텍스트 */
+.field-hint {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--ink-faint);
+  margin-top: 5px;
+  text-transform: none;
+  letter-spacing: 0;
+}
 
 .segmented {
   display: flex;
   gap: 6px;
 }
 .seg {
-  flex: 1;
+  /* 라벨 길이가 제각각(로컬(클라이언트) 등)이라 균등폭 대신 내용폭+성장, 줄바꿈 금지 */
+  flex: 1 1 auto;
+  white-space: nowrap;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 9px;
