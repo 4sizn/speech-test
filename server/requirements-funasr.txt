@@ -1,0 +1,5 @@
+# FunASR 엔진 (용량 큼 — torch 포함. faster-whisper만 쓰면 설치 불필요)
+funasr>=1.1
+torch
+torchaudio
+modelscope

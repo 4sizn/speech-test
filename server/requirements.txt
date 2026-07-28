@@ -1,0 +1,4 @@
+# 실시간 STT 서버 공통 + faster-whisper 엔진
+websockets>=12
+numpy
+faster-whisper>=1.0

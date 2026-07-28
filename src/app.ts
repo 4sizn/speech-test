@@ -13,6 +13,7 @@ import type { ProviderMeta } from './core/ProviderRegistry';
 import { WebSpeechProvider } from './providers/WebSpeechProvider';
 import { WhisperWasmProvider } from './providers/WhisperWasmProvider';
 import { StreamingAsrProvider } from './providers/StreamingAsrProvider';
+import { FunAsrProvider } from './providers/FunAsrProvider';
 import { Qwen3Provider } from './providers/Qwen3Provider';
 import { DatasetRegistry } from './datasets/DatasetRegistry';
 import { AihubCallCenterAdapter } from './datasets/adapters/AihubCallCenterAdapter';
@@ -31,6 +32,7 @@ const registry = new ProviderRegistry()
   .register(WebSpeechProvider)
   .register(WhisperWasmProvider)
   .register(StreamingAsrProvider)
+  .register(FunAsrProvider)
   .register(Qwen3Provider);
 
 // 독립 샘플(데이터셋)도 Provider와 같은 주입형 — 새 샘플은 어댑터 register 한 줄

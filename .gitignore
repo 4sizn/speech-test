@@ -16,3 +16,7 @@ _screen.png
 public/ort/
 public/models/
 public/fonts/
+
+# 온프레미스 ASR 서버 산출물
+server/.venv/
+server/models/

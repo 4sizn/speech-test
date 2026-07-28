@@ -19,13 +19,20 @@ interface StreamingConfig extends ProviderConfig {
  *    #onOpen / #send / #onMessage 를 실제 스펙에 맞춰 조정해야 한다(TODO).
  */
 export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
-  static override readonly id = 'streaming';
-  static override readonly label = 'Cloud Streaming ASR (WebSocket)';
+  // FunAsrProvider가 상속해 재선언할 수 있도록 리터럴이 아닌 string으로 선언
+  static override readonly id: string = 'streaming';
+  static override readonly label: string = 'Streaming ASR (faster-whisper 등)';
   static override readonly capabilities: readonly Mode[] = [Mode.FILE, Mode.MIC];
   // WebSocket 엔드포인트가 클라우드든 사내 자체 서버든 동일 프로토콜 — 둘 다 지원 (로컬(클라이언트) 처리 없음)
-  static override readonly locations: readonly RuntimeLocation[] = ['remote-cloud', 'remote-onpremise'];
+  static override readonly locations: readonly RuntimeLocation[] = ['remote-onpremise', 'remote-cloud'];
   static override readonly configSchema: readonly ConfigField[] = [
-    { key: 'wsEndpoint', label: 'WebSocket URL', placeholder: 'wss://...' },
+    {
+      key: 'wsEndpoint',
+      label: 'WebSocket URL',
+      default: 'ws://localhost:8765',
+      placeholder: 'ws://localhost:8765 또는 wss://...',
+      hint: '온프레미스 백엔드: server/realtime_asr_server.py --engine faster-whisper (기본 포트 8765) — 실시간 partial/final 출력',
+    },
     { key: 'apiKey', label: 'API Key', type: 'password', placeholder: '(필요 시)' },
   ];
 
@@ -67,13 +74,33 @@ export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
     this._active = false;
     await this.#tap?.stop();
     this.#tap = null;
+    const ws = this.#ws;
+    this.#ws = null;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        // 종료 신호 → 서버가 잔여 청크 처리를 마치고 최종 결과를 보낸 뒤 닫는다.
+        // 느린 엔진(FunASR CPU 등)의 처리 백로그를 감안해 최대 6초 대기.
+        ws.send(JSON.stringify({ type: 'stop' }));
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(resolve, 6000);
+          ws.addEventListener(
+            'close',
+            () => {
+              clearTimeout(timeout);
+              resolve();
+            },
+            { once: true },
+          );
+        });
+      } catch {
+        /* noop */
+      }
+    }
     try {
-      // TODO: 벤더에 따라 종료 신호(예: {type:'CloseStream'}) 전송 필요할 수 있음
-      this.#ws?.close();
+      ws?.close();
     } catch {
       /* noop */
     }
-    this.#ws = null;
   }
 
   // ── 벤더별로 조정할 지점 ──────────────────────────────────────────
@@ -95,6 +122,8 @@ export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
       const text: unknown = data.text ?? data.transcript ?? data.channel?.alternatives?.[0]?.transcript ?? '';
       const isFinal: boolean = Boolean(data.isFinal ?? data.is_final ?? data.type === 'final');
       if (!text) return;
+      // 중지 대기 중에는 최종 결과만 받는다(늦게 도착하는 partial 무시)
+      if (!this._active && !isFinal) return;
       if (isFinal) this._sink?.final(String(text).trim());
       else this._sink?.partial(String(text).trim());
     } catch {
