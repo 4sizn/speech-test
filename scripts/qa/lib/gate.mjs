@@ -25,9 +25,16 @@ export const WATCHED_PATHS = [
   'package.json',
 ];
 
-/** 감시 대상 파일 내용의 해시 맵(경로 → 12자 해시). git 추적 파일만 본다. */
+/**
+ * 감시 대상 파일 내용의 해시 맵(경로 → 12자 해시).
+ *
+ * 추적 파일뿐 아니라 **아직 커밋되지 않은 새 파일(untracked)도 포함**한다.
+ * 추적 파일만 보면, 새로 만든 Provider나 하네스로 측정한 뒤 그것을 커밋하는 순간
+ * "측정 후 소스가 바뀌었다"로 잡혀 자기 자신 때문에 푸시가 막힌다(실제로 겪음).
+ * .gitignore된 파일은 제외한다(--exclude-standard).
+ */
 export function sourceHashes() {
-  const listed = execFileSync('git', ['ls-files', ...WATCHED_PATHS], {
+  const listed = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', ...WATCHED_PATHS], {
     cwd: PROJECT_ROOT,
     encoding: 'utf8',
   })

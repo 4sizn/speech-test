@@ -37,6 +37,7 @@ Whisper 기본값 tiny의 CER 458% 환각을 그 방식으로는 못 잡고 있�
 npm run qa:samples   # 데이터셋에서 테스트 사운드 배열 선정 → stt-e2e/samples.json (최초 1회)
 npm run qa:stt       # 전 기능 자동 순회 → 결과지 작성 → 기준선 대비 판정(FAIL이면 non-zero exit)
 npm run qa:gate      # 측정 없이 최신 결과지만 재판정
+npm run qa:gate -- --promote   # 최신 결과지를 기준선으로 승격(재측정 없이) — 의도된 변화 반영용
 npm run qa:hooks     # pre-push 게이트 활성화(git config core.hooksPath .githooks) — 최초 1회
 ```
 
@@ -64,7 +65,14 @@ stt-e2e/.local/                   원문 상세·브라우저 프로필·이벤�
 
 ### 게이트 규칙
 
-- 기능별로 `cerAvg <= 기준선 + 허용오차`(결정적 경로 2%p, WebSpeech 5%p)
+- 기능별로 `cerAvg <= 기준선 + 허용오차` — **허용오차는 측정 재현성에 맞춘 값이다.**
+  같은 구성으로 두 번 돌린 실측 변동폭: whisper-file 0.9%p · whisper-mic 0.5%p ·
+  streaming-mic 2.0%p · sensevoice-file 1.8%p · sensevoice-mic 3.6%p · webspeech-file 3.7%p.
+  실시간 스트리밍은 재생 타이밍·서버 백로그에, 클라우드는 서비스 상태에 따라 흔들린다.
+  → **파일 재전사 3%p · 실시간(mic/스트리밍) 5%p · 클라우드 7%p.**
+  재현성보다 타이트한 임계는 회귀가 없어도 매번 FAIL을 내 게이트를 무력화한다.
+- 샘플 구성이 바뀌면(예: `--samples`) CER 평균도 달라진다 → 기준선과 비교할 수 없으니
+  구성을 바꿀 때는 기준선을 다시 세운다(`npm run qa:gate -- --promote`)
 - 기준선에 있던 기능이 이번에 SKIP → **FAIL**(측정을 건너뛰어 통과하는 길을 막는다)
 - 기준선 갱신은 `--update-baseline`으로만. 자동 승격하면 한 번 통과한 회귀가 새 기준이 된다
 - `pre-push` 훅은 **측정을 다시 돌리지 않고**(quick도 20분대) 최신 결과지를 검사한다:

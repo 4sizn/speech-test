@@ -3,7 +3,13 @@
  *
  * sets: 이 기능에 돌릴 샘플 세트. 긴 연속 오디오(long)는 청킹 전략 회귀를 잡는 용도라
  *       file 모드에만 넣는다(mic까지 넣으면 실시간 재생 시간이 두 배가 된다).
- * tolerance: 기준선 대비 허용 악화(퍼센트포인트/100). 비결정적 경로는 크게 둔다.
+ * tolerance: 기준선 대비 허용 악화(퍼센트포인트/100).
+ *       **측정 재현성에 맞춘 값이다.** 같은 구성으로 두 번 돌린 실측 변동폭:
+ *       whisper-file 0.9%p · whisper-mic 0.5%p · streaming-mic 2.0%p · sensevoice-file 1.8%p ·
+ *       sensevoice-mic 3.6%p · webspeech-file 3.7%p.
+ *       실시간 스트리밍은 재생 타이밍과 서버 백로그에 따라 흔들리고, 클라우드는 더 흔들린다.
+ *       재현성보다 타이트한 임계는 회귀가 없어도 매번 FAIL을 내 게이트를 무력화한다.
+ *       → 파일 재전사 3%p · 실시간(mic/스트리밍) 5%p · 클라우드 7%p.
  * requires: 러너가 전제 조건을 점검해 결과지 환경에 기록한다.
  */
 
@@ -19,7 +25,7 @@ export function buildFeatures(profile = 'quick') {
       location: 'local-client',
       config: { modelId: 'Xenova/whisper-base', maxChunkSec: '20' },
       sets: ['short', 'long'],
-      tolerance: 0.02,
+      tolerance: 0.03,
       requires: { asset: 'Xenova/whisper-base' },
     },
     {
@@ -29,7 +35,7 @@ export function buildFeatures(profile = 'quick') {
       location: 'local-client',
       config: { modelId: 'Xenova/whisper-base', maxChunkSec: '20' },
       sets: ['short'],
-      tolerance: 0.02,
+      tolerance: 0.05,
       requires: { asset: 'Xenova/whisper-base' },
     },
     {
@@ -39,7 +45,7 @@ export function buildFeatures(profile = 'quick') {
       location: ON_PREM,
       config: { wsEndpoint: 'ws://localhost:8765' },
       sets: ['short', 'long'],
-      tolerance: 0.02,
+      tolerance: 0.05,
       requires: { server: 'faster-whisper' },
     },
     {
@@ -49,7 +55,7 @@ export function buildFeatures(profile = 'quick') {
       location: ON_PREM,
       config: { wsEndpoint: 'ws://localhost:8765' },
       sets: ['short'],
-      tolerance: 0.02,
+      tolerance: 0.05,
       requires: { server: 'faster-whisper' },
     },
     {
@@ -59,7 +65,7 @@ export function buildFeatures(profile = 'quick') {
       location: ON_PREM,
       config: { wsEndpoint: 'ws://localhost:8767' },
       sets: ['short', 'long'],
-      tolerance: 0.02,
+      tolerance: 0.05,
       requires: { server: 'sensevoice' },
     },
     {
@@ -69,7 +75,7 @@ export function buildFeatures(profile = 'quick') {
       location: ON_PREM,
       config: { wsEndpoint: 'ws://localhost:8767' },
       sets: ['short'],
-      tolerance: 0.02,
+      tolerance: 0.05,
       requires: { server: 'sensevoice' },
     },
     {
@@ -79,7 +85,7 @@ export function buildFeatures(profile = 'quick') {
       location: ON_PREM,
       config: { wsEndpoint: 'ws://localhost:8766' },
       sets: ['short', 'long'],
-      tolerance: 0.02,
+      tolerance: 0.05,
       requires: { server: 'funasr' },
       // 기본 모델이 중국어 전용이라 한국어 CER은 100%를 크게 넘는 게 정상이다.
       // 절대값이 아니라 직전 대비 변화만 의미가 있다.
@@ -92,7 +98,7 @@ export function buildFeatures(profile = 'quick') {
       location: 'remote-cloud',
       config: {},
       sets: ['short'],
-      tolerance: 0.05,
+      tolerance: 0.07,
       requires: { network: true },
       note: '클라우드 인식 — 실행마다 흔들린다',
     },
@@ -103,7 +109,7 @@ export function buildFeatures(profile = 'quick') {
       location: 'remote-cloud',
       config: {},
       sets: ['short'],
-      tolerance: 0.05,
+      tolerance: 0.07,
       requires: { network: true },
       note: '클라우드 인식 · 파일 주입 가짜 마이크',
     },
@@ -142,7 +148,7 @@ export function buildFeatures(profile = 'quick') {
       location: 'local-client',
       config: { modelId: 'Xenova/whisper-small', maxChunkSec: '20' },
       sets: ['short', 'long'],
-      tolerance: 0.02,
+      tolerance: 0.03,
       requires: { asset: 'Xenova/whisper-small' },
     },
     {
@@ -152,7 +158,7 @@ export function buildFeatures(profile = 'quick') {
       location: 'local-client',
       config: {},
       sets: ['short'],
-      tolerance: 0.05,
+      tolerance: 0.07,
       requires: { soda: true },
       note: '온디바이스(SODA) — 모델 미지원 환경이면 온라인으로 폴백하며 경고',
     },

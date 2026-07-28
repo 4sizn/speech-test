@@ -32,7 +32,8 @@ const ONLY = (val('features', '') || '').split(',').filter(Boolean);
 const CHROME =
   process.env.STT_QA_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const VITE_PORT = 5173;
-const QA_PORT = Number(val('qa-port', 8899));
+// 기본 0 = 임의 포트. 고정 포트는 이전 실행의 하네스 탭이 결과를 섞어 넣을 수 있다
+const QA_PORT = Number(val('qa-port', 0));
 
 const log = (...a) => console.log(...a);
 const sh = (cmd, cmdArgs, opts = {}) =>
@@ -260,6 +261,11 @@ try {
     sourceHashes: sourceHashes(),
     envLine: `${Object.entries(serverStatus).map(([p, s]) => `:${p} ${s}`).join(' · ') || '온프레미스 미사용'} · 샘플 ${qa.sampleCount}`,
   };
+
+  const stray = qa.rejectedEvents();
+  if (stray) {
+    log(`  ⚠ 다른 실행의 이벤트 ${stray}건을 버렸습니다 — 이전 실행의 브라우저가 살아있을 수 있습니다`);
+  }
 
   const report = writeReport({ eventsPath: qa.eventsPath, env, plan });
   const { verdicts, overall } = judge(report.rows);

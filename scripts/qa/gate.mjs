@@ -8,8 +8,9 @@
  *  2. 그 결과지가 **지금 소스로** 측정된 것 (감시 경로 해시 일치)
  *  3. 샘플 정답(refHash)과 전사 정규화 규칙이 그대로
  */
-import { latestSummary } from './lib/report.mjs';
-import { sourceHashes, diffHashes, WATCHED_PATHS, updateBaseline } from './lib/gate.mjs';
+import { dirname } from 'node:path';
+import { latestSummary, writeSummary } from './lib/report.mjs';
+import { sourceHashes, diffHashes, WATCHED_PATHS, updateBaseline, judge, loadBaseline } from './lib/gate.mjs';
 import { assertNormalizerInSync, loadSamples } from './lib/dataset.mjs';
 
 const quiet = process.argv.includes('--quiet');
@@ -31,14 +32,25 @@ const { doc, stamp, path } = latest;
 say(`최신 결과지: ${path.replace(process.cwd() + '/', '')} (${stamp}, profile ${doc.env?.profile ?? '?'})`);
 
 if (promote) {
-  const rows = (doc.rows ?? []).filter((r) => !r.skipped && r.cerAvg != null);
-  if (!rows.length) fail('승격할 측정값이 없습니다');
-  const baseline = updateBaseline(rows, doc.env ?? { at: new Date().toISOString() });
-  console.log(`기준선 승격 완료 — ${rows.length}개 기능 (stt-e2e/baseline.json)`);
-  for (const r of rows) console.log(`  ${r.feature.padEnd(22)} ${(r.cerAvg * 100).toFixed(1)}%`);
-  console.log(`근거 결과지: ${path.replace(process.cwd() + '/', '')}`);
-  void baseline;
-  process.exit(0);
+  const measured = (doc.rows ?? []).filter((r) => !r.skipped && r.cerAvg != null);
+  if (!measured.length) fail('승격할 측정값이 없습니다');
+  updateBaseline(measured, doc.env ?? { at: new Date().toISOString() });
+  console.log(`기준선 승격 완료 — ${measured.length}개 기능 (stt-e2e/baseline.json)`);
+  for (const r of measured) console.log(`  ${r.feature.padEnd(22)} ${(r.cerAvg * 100).toFixed(1)}%`);
+
+  // 결과지의 판정도 새 기준선으로 다시 계산해 저장한다 — 승격한 결과지는 정의상 PASS이고,
+  // 측정 당시 판정을 그대로 두면 게이트가 계속 옛 판정을 읽어 FAIL로 막는다.
+  const rejudged = judge(doc.rows ?? [], loadBaseline());
+  writeSummary({
+    dir: dirname(path),
+    stamp,
+    rows: doc.rows ?? [],
+    verdicts: rejudged.verdicts,
+    env: doc.env,
+    overall: rejudged.overall,
+  });
+  console.log(`결과지 판정 재계산: ${rejudged.overall.pass ? 'PASS' : 'FAIL'} — ${path.replace(process.cwd() + '/', '')}`);
+  process.exit(rejudged.overall.pass ? 0 : 1);
 }
 
 // 1) 판정

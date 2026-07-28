@@ -16,7 +16,15 @@ import { join } from 'node:path';
 import { STT_E2E_LOCAL_DIR, loadSamples, materializeSample } from './lib/dataset.mjs';
 import { buildFeatures } from './lib/features.mjs';
 
-export const DEFAULT_PORT = 8899;
+/**
+ * 0 = 매 실행 임의 포트.
+ *
+ * 고정 포트를 쓰면 이전 실행의 하네스 탭(브라우저에 남아 있거나 세션 복원된 것)이 같은 주소로
+ * 결과를 POST해 측정이 오염된다 — 실제로 겪었다: `?run=1&features=streaming-file`로 열어둔
+ * 탭이 리로드되며 자동 시작해, 7샘플 기능이 14개로 기록되고 순회 순서가 뒤섞였다.
+ * runId만으로는 막히지 않는다(그 탭도 같은 서버에서 같은 runId를 받아간다).
+ */
+export const DEFAULT_PORT = 0;
 
 /**
  * @param {object} opts
@@ -29,11 +37,17 @@ export async function startQaServer({ profile = 'quick', limit, port = DEFAULT_P
   const { doc, mismatches } = loadSamples();
   const features = buildFeatures(profile);
 
-  const pick = (set) => {
+  // 게이트는 매 커밋마다 돌려야 하므로 기본 구성을 실용적인 크기로 둔다.
+  // 실측: short 8 + long 2로는 전 기능 한 바퀴에 40분 넘게 걸린다(Whisper가 지배적).
+  // --samples N 으로 짧은 발화 개수를 덮어쓸 수 있다.
+  const DEFAULT_SHORT = 6;
+  const DEFAULT_LONG = 1;
+  const pick = (set, fallback) => {
     const all = doc.items.filter((i) => i.set === set);
-    return limit ? all.slice(0, limit) : all;
+    const n = limit ?? fallback;
+    return n ? all.slice(0, n) : all;
   };
-  const sets = { short: pick('short'), long: pick('long') };
+  const sets = { short: pick('short', DEFAULT_SHORT), long: pick('long', DEFAULT_LONG) };
 
   // 샘플 id → { item, ref } (ref는 실행 시점에 데이터셋에서 읽은 정규화 전사)
   const byId = new Map();
@@ -42,10 +56,18 @@ export async function startQaServer({ profile = 'quick', limit, port = DEFAULT_P
   }
 
   mkdirSync(STT_E2E_LOCAL_DIR, { recursive: true });
-  const events = eventsPath || join(STT_E2E_LOCAL_DIR, `events-${Date.now()}.jsonl`);
+  const startedAt = Date.now();
+  const events = eventsPath || join(STT_E2E_LOCAL_DIR, `events-${startedAt}.jsonl`);
   writeFileSync(events, '');
 
+  // 실행 식별자 — 하네스가 모든 이벤트에 실어 보내고, 서버는 자기 runId만 기록한다.
+  // 앞선 실행의 브라우저가 살아남아 같은 포트로 POST하면 결과가 섞여 CER이 오염된다(실제로 겪음:
+  // 7샘플 기능이 14개로 기록되고 순회 순서가 뒤섞였다).
+  const runId = `run-${startedAt}`;
+  let rejected = 0;
+
   const manifest = {
+    runId,
     profile,
     normalizerFingerprint: doc.normalizerFingerprint ?? null,
     features,
@@ -60,7 +82,7 @@ export async function startQaServer({ profile = 'quick', limit, port = DEFAULT_P
     res.setHeader('Access-Control-Allow-Headers', '*');
     if (req.method === 'OPTIONS') return res.end();
 
-    const url = new URL(req.url, `http://127.0.0.1:${port}`);
+    const url = new URL(req.url, 'http://127.0.0.1');
 
     if (url.pathname === '/health') {
       res.writeHead(200, { 'content-type': 'application/json' });
@@ -93,7 +115,17 @@ export async function startQaServer({ profile = 'quick', limit, port = DEFAULT_P
       let body = '';
       req.on('data', (c) => (body += c));
       req.on('end', () => {
-        if (body) appendFileSync(events, body.replace(/\n/g, ' ') + '\n');
+        if (body) {
+          let ok = true;
+          try {
+            ok = JSON.parse(body).runId === runId;
+          } catch {
+            ok = false;
+          }
+          // 다른 실행(살아남은 옛 브라우저)의 이벤트는 버린다 — 섞이면 결과지가 오염된다
+          if (ok) appendFileSync(events, body.replace(/\n/g, ' ') + '\n');
+          else rejected++;
+        }
         res.writeHead(200);
         res.end('ok');
       });
@@ -105,13 +137,17 @@ export async function startQaServer({ profile = 'quick', limit, port = DEFAULT_P
   });
 
   await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
+  const actualPort = server.address().port; // port=0이면 커널이 할당한 실제 포트
 
   return {
-    port,
+    port: actualPort,
+    runId,
     eventsPath: events,
     manifest,
     refMismatches: mismatches,
     sampleCount: sets.short.length + sets.long.length,
+    /** 다른 실행에서 흘러든(버린) 이벤트 수 — 0이 아니면 잔여 브라우저가 살아있다는 신호 */
+    rejectedEvents: () => rejected,
     close: () => new Promise((resolve) => server.close(resolve)),
   };
 }

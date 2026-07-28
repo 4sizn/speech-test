@@ -38,6 +38,7 @@ interface Feature {
 }
 
 interface Manifest {
+  runId: string;
   profile: string;
   normalizerFingerprint: string | null;
   features: Feature[];
@@ -54,8 +55,11 @@ const RECOGNITION_SLACK_MS = 120_000;
 const logEl = document.getElementById('log') as HTMLPreElement;
 const lines: string[] = [];
 
+/** 서버가 발급한 실행 식별자 — 모든 이벤트에 실어 보내 다른 실행과 섞이지 않게 한다. */
+let runId = '';
+
 function post(event: Record<string, unknown>): void {
-  void fetch(`${QA}/event`, { method: 'POST', body: JSON.stringify(event) }).catch(() => {});
+  void fetch(`${QA}/event`, { method: 'POST', body: JSON.stringify({ runId, ...event }) }).catch(() => {});
 }
 
 function log(msg: string): void {
@@ -273,6 +277,7 @@ async function runFeature(f: Feature, manifest: Manifest): Promise<void> {
 async function main(): Promise<void> {
   installFakeMic();
   const manifest = (await (await fetch(`${QA}/manifest.json`)).json()) as Manifest;
+  runId = manifest.runId; // 이후 모든 이벤트가 이 실행 소속으로 기록된다
   // ?features=a,b 로 일부만 — 부분 재실행/디버깅용
   const only = (params.get('features') ?? '')
     .split(',')

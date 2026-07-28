@@ -1,8 +1,8 @@
 {
   "stamp": "2026-07-29",
   "env": {
-    "at": "2026-07-28T17:03:30.801Z",
-    "commit": "33be282",
+    "at": "2026-07-28T17:54:40.050Z",
+    "commit": "5ed7999",
     "dirty": true,
     "profile": "quick",
     "snapshot": {
@@ -11,12 +11,12 @@
         "Xenova/whisper-base": true
       },
       "servers": {
-        "8765": "reused",
-        "8766": "reused",
-        "8767": "reused"
+        "8765": "started",
+        "8766": "started",
+        "8767": "started"
       },
       "dataset": "aihub_call_center_dataset (AI Hub 상황별음성 상담 음성 / KtelSpeech)",
-      "samples": 10,
+      "samples": 7,
       "fakeMic": true
     },
     "sourceHashes": {
@@ -35,127 +35,129 @@
       "src/providers/StreamingAsrProvider.ts": "256f600ea4ef",
       "src/providers/WebSpeechProvider.ts": "5cc14b3b4dd5",
       "src/providers/WhisperWasmProvider.ts": "400252420c19",
+      "src/providers/registerAll.ts": "13cdda90c916",
+      "src/qa/harness.ts": "b763c5cc0259",
       "vite.config.ts": "32419d7ae4c0"
     },
-    "envLine": ":8765 reused · :8766 reused · :8767 reused · 샘플 10"
+    "envLine": ":8765 started · :8766 started · :8767 started · 샘플 7"
   },
   "rows": [
     {
       "feature": "whisper-base-file",
-      "samples": 10,
-      "cerAvg": 0.3058,
-      "cerMedian": 0.2722,
-      "cerWorst": 0.6111,
-      "msAvg": 15424,
+      "samples": 7,
+      "cerAvg": 0.2915,
+      "cerMedian": 0.2778,
+      "cerWorst": 0.5789,
+      "msAvg": 11562,
       "skipped": null,
       "note": null,
       "tolerance": 0.02,
-      "runsInDoc": 1,
-      "prev": null
+      "runsInDoc": 4,
+      "prev": 0.3005
     },
     {
       "feature": "whisper-base-mic",
-      "samples": 8,
-      "cerAvg": 0.2584,
-      "cerMedian": 0.1883,
-      "cerWorst": 0.5833,
-      "msAvg": 7603,
+      "samples": 6,
+      "cerAvg": 0.2877,
+      "cerMedian": 0.1977,
+      "cerWorst": 0.5789,
+      "msAvg": 6847,
       "skipped": null,
       "note": null,
       "tolerance": 0.02,
-      "runsInDoc": 1,
-      "prev": null
+      "runsInDoc": 4,
+      "prev": 0.283
     },
     {
       "feature": "streaming-file",
-      "samples": 10,
-      "cerAvg": 0.255,
-      "cerMedian": 0.2389,
-      "cerWorst": 0.6389,
-      "msAvg": 13638,
+      "samples": 7,
+      "cerAvg": 0.2968,
+      "cerMedian": 0.2778,
+      "cerWorst": 0.5833,
+      "msAvg": 11596,
       "skipped": null,
       "note": null,
       "tolerance": 0.02,
-      "runsInDoc": 1,
-      "prev": null
+      "runsInDoc": 4,
+      "prev": 0.3539
     },
     {
       "feature": "streaming-mic",
-      "samples": 8,
-      "cerAvg": 0.2783,
-      "cerMedian": 0.1883,
-      "cerWorst": 0.7222,
-      "msAvg": 6492,
+      "samples": 6,
+      "cerAvg": 0.291,
+      "cerMedian": 0.1977,
+      "cerWorst": 0.6316,
+      "msAvg": 6093,
       "skipped": null,
       "note": null,
       "tolerance": 0.02,
-      "runsInDoc": 1,
-      "prev": null
+      "runsInDoc": 4,
+      "prev": 0.3112
     },
     {
       "feature": "sensevoice-file",
-      "samples": 10,
-      "cerAvg": 0.1622,
-      "cerMedian": 0.1558,
+      "samples": 7,
+      "cerAvg": 0.1513,
+      "cerMedian": 0.1053,
       "cerWorst": 0.3952,
-      "msAvg": 13681,
+      "msAvg": 10967,
       "skipped": null,
       "note": null,
       "tolerance": 0.02,
-      "runsInDoc": 1,
-      "prev": null
+      "runsInDoc": 4,
+      "prev": 0.1689
     },
     {
       "feature": "sensevoice-mic",
-      "samples": 8,
-      "cerAvg": 0.1081,
-      "cerMedian": 0.1193,
+      "samples": 6,
+      "cerAvg": 0.1369,
+      "cerMedian": 0.1579,
       "cerWorst": 0.2222,
-      "msAvg": 7051,
+      "msAvg": 6510,
       "skipped": null,
       "note": null,
       "tolerance": 0.02,
-      "runsInDoc": 1,
-      "prev": null
+      "runsInDoc": 4,
+      "prev": 0.1009
     },
     {
       "feature": "funasr-file",
-      "samples": 10,
-      "cerAvg": 0.9958,
+      "samples": 7,
+      "cerAvg": 0.9957,
       "cerMedian": 1,
       "cerWorst": 1,
-      "msAvg": 13522,
+      "msAvg": 10832,
       "skipped": null,
       "note": "중국어 전용 모델 — 절대 CER 무의미, 회귀 감지용",
       "tolerance": 0.02,
-      "runsInDoc": 1,
-      "prev": null
+      "runsInDoc": 4,
+      "prev": 0.9957
     },
     {
       "feature": "webspeech-file",
-      "samples": 8,
-      "cerAvg": 0.0619,
-      "cerMedian": 0.0744,
-      "cerWorst": 0.1111,
-      "msAvg": 6166,
+      "samples": 6,
+      "cerAvg": 0.0869,
+      "cerMedian": 0.079,
+      "cerWorst": 0.2222,
+      "msAvg": 5597,
       "skipped": null,
       "note": "클라우드 인식 — 실행마다 흔들린다",
       "tolerance": 0.05,
-      "runsInDoc": 1,
-      "prev": null
+      "runsInDoc": 4,
+      "prev": 0.0499
     },
     {
       "feature": "webspeech-mic",
-      "samples": 8,
-      "cerAvg": 0.0536,
-      "cerMedian": 0.0318,
+      "samples": 6,
+      "cerAvg": 0.0499,
+      "cerMedian": 0.0152,
       "cerWorst": 0.1579,
-      "msAvg": 6153,
+      "msAvg": 5603,
       "skipped": null,
       "note": "클라우드 인식 · 파일 주입 가짜 마이크",
       "tolerance": 0.05,
-      "runsInDoc": 1,
-      "prev": null
+      "runsInDoc": 4,
+      "prev": 0.0499
     },
     {
       "feature": "qwen3-file",
@@ -167,73 +169,82 @@
       "skipped": "Qwen3 미설정 — 설정 패널에서 endpoint / apiKey 입력 필요",
       "note": "자격 미설정이면 SKIP",
       "tolerance": 0.05,
-      "runsInDoc": 1,
+      "runsInDoc": 4,
       "prev": null
     }
   ],
   "verdicts": [
     {
       "feature": "whisper-base-file",
-      "verdict": "NEW",
-      "baseline": null,
-      "cerAvg": 0.3058,
-      "reason": "기준선 없음"
+      "verdict": "PASS",
+      "baseline": 0.2915,
+      "cerAvg": 0.2915,
+      "delta": 0,
+      "reason": "+0.0%p / 허용 2%p"
     },
     {
       "feature": "whisper-base-mic",
-      "verdict": "NEW",
-      "baseline": null,
-      "cerAvg": 0.2584,
-      "reason": "기준선 없음"
+      "verdict": "PASS",
+      "baseline": 0.2877,
+      "cerAvg": 0.2877,
+      "delta": 0,
+      "reason": "+0.0%p / 허용 2%p"
     },
     {
       "feature": "streaming-file",
-      "verdict": "NEW",
-      "baseline": null,
-      "cerAvg": 0.255,
-      "reason": "기준선 없음"
+      "verdict": "PASS",
+      "baseline": 0.2968,
+      "cerAvg": 0.2968,
+      "delta": 0,
+      "reason": "+0.0%p / 허용 2%p"
     },
     {
       "feature": "streaming-mic",
-      "verdict": "NEW",
-      "baseline": null,
-      "cerAvg": 0.2783,
-      "reason": "기준선 없음"
+      "verdict": "PASS",
+      "baseline": 0.291,
+      "cerAvg": 0.291,
+      "delta": 0,
+      "reason": "+0.0%p / 허용 2%p"
     },
     {
       "feature": "sensevoice-file",
-      "verdict": "NEW",
-      "baseline": null,
-      "cerAvg": 0.1622,
-      "reason": "기준선 없음"
+      "verdict": "PASS",
+      "baseline": 0.1513,
+      "cerAvg": 0.1513,
+      "delta": 0,
+      "reason": "+0.0%p / 허용 2%p"
     },
     {
       "feature": "sensevoice-mic",
-      "verdict": "NEW",
-      "baseline": null,
-      "cerAvg": 0.1081,
-      "reason": "기준선 없음"
+      "verdict": "PASS",
+      "baseline": 0.1369,
+      "cerAvg": 0.1369,
+      "delta": 0,
+      "reason": "+0.0%p / 허용 2%p"
     },
     {
       "feature": "funasr-file",
-      "verdict": "NEW",
-      "baseline": null,
-      "cerAvg": 0.9958,
-      "reason": "기준선 없음"
+      "verdict": "PASS",
+      "baseline": 0.9957,
+      "cerAvg": 0.9957,
+      "delta": 0,
+      "reason": "+0.0%p / 허용 2%p"
     },
     {
       "feature": "webspeech-file",
-      "verdict": "NEW",
-      "baseline": null,
-      "cerAvg": 0.0619,
-      "reason": "기준선 없음"
+      "verdict": "PASS",
+      "baseline": 0.0869,
+      "cerAvg": 0.0869,
+      "delta": 0,
+      "reason": "+0.0%p / 허용 5%p"
     },
     {
       "feature": "webspeech-mic",
-      "verdict": "NEW",
-      "baseline": null,
-      "cerAvg": 0.0536,
-      "reason": "기준선 없음"
+      "verdict": "PASS",
+      "baseline": 0.0499,
+      "cerAvg": 0.0499,
+      "delta": 0,
+      "reason": "+0.0%p / 허용 5%p"
     },
     {
       "feature": "qwen3-file",
