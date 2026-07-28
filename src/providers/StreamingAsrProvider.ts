@@ -37,30 +37,19 @@ export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
   #tap: AudioPcmTap | null = null;
 
   async start(input: SttInput): Promise<void> {
-    if (!this.config.wsEndpoint) {
-      this._sink?.system(SystemEvent.STATUS, { message: 'Streaming 미설정 — WebSocket URL 필요', level: 'warn' });
-      this._sink?.error(new Error('Streaming ASR이 설정되지 않았습니다'));
-      return;
-    }
-    if (!input.stream) {
-      this._sink?.error(new Error('PCM 스트림이 없습니다 (파일/마이크 캡처 실패)'));
-      return;
-    }
+    // 시작 단계 실패는 throw — 엔진이 RECOGNITION_ERROR로 정규화하고 #active를 되돌린다
+    if (!this.config.wsEndpoint) throw new Error('Streaming 미설정 — WebSocket URL 필요');
+    if (!input.stream) throw new Error('PCM 스트림이 없습니다 (파일/마이크 캡처 실패)');
     this._active = true;
 
-    try {
-      this.#ws = new WebSocket(this.config.wsEndpoint);
-      this.#ws.binaryType = 'arraybuffer';
-      this.#ws.onopen = () => this.#onOpen(input.lang);
-      this.#ws.onmessage = (e) => this.#onMessage(e);
-      this.#ws.onerror = () => this._sink?.error(new Error('WebSocket 에러'));
-      this.#ws.onclose = () => {
-        if (this._active) this._sink?.system(SystemEvent.STATUS, { message: 'WebSocket 종료됨' });
-      };
-    } catch (err) {
-      this._sink?.error(err instanceof Error ? err : new Error(String(err)));
-      return;
-    }
+    this.#ws = new WebSocket(this.config.wsEndpoint);
+    this.#ws.binaryType = 'arraybuffer';
+    this.#ws.onopen = () => this.#onOpen(input.lang);
+    this.#ws.onmessage = (e) => this.#onMessage(e);
+    this.#ws.onerror = () => this._sink?.error(new Error('WebSocket 에러'));
+    this.#ws.onclose = () => {
+      if (this._active) this._sink?.system(SystemEvent.STATUS, { message: 'WebSocket 종료됨' });
+    };
 
     // PCM 캡처 → 청크 전송
     this.#tap = new AudioPcmTap(input.stream, {

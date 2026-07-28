@@ -78,20 +78,17 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
   }
 
   async start(input: SttInput): Promise<void> {
-    if (!input.stream) {
-      this._sink?.error(new Error('PCM 스트림이 없습니다 (파일/마이크 캡처 실패)'));
-      return;
-    }
-    this._active = true;
+    // 시작 단계 실패는 throw — 엔진이 RECOGNITION_ERROR로 정규화하고 #active를 되돌린다
+    // (sink.error 후 정상 return하면 엔진이 시작된 것으로 오인해 다음 시작이 차단된다)
+    if (!input.stream) throw new Error('PCM 스트림이 없습니다 (파일/마이크 캡처 실패)');
 
     try {
       await this.#ensureModel(); // prepare()가 로드해 둔 모델 재사용(설정이 바뀌었으면 재로드)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this._sink?.error(new Error(`Whisper 로드 실패: ${msg} — 모델 자산이 없으면 npm run assets로 받아주세요`));
-      this._active = false;
-      return;
+      throw new Error(`Whisper 로드 실패: ${msg} — 모델 자산이 없으면 npm run assets로 받아주세요`);
     }
+    this._active = true;
 
     const lang = LANG_MAP[input.lang || this.config.lang || ''];
     const chunkSamples = Math.max(16000, Math.round(Number(this.config.chunkSec || 5) * 16000));

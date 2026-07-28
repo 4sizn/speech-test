@@ -193,20 +193,16 @@ export class SttEngine {
       // 모델 로드 같은 무거운 준비를 재생/캡처 시작 *전에* 끝낸다 —
       // 준비 중에 재생된 파일 앞부분이 인식에서 잘리는 문제 방지
       await this.#provider.prepare();
+      if (!this.#active) return; // 준비 중 사용자가 중지함
+      const input = await this.#buildInput();
+      await this.#provider.start(input);
     } catch (err) {
+      // 준비/입력조립/시작 어느 단계의 실패든 RECOGNITION_ERROR로 정규화(busy UI 복구)하고 재던진다
       this.#active = false;
       this.#bus.emit(EventCategory.SYSTEM, SystemEvent.RECOGNITION_ERROR, {
         message: err instanceof Error ? err.message : String(err),
         provider: this.#provider.id,
       });
-      throw err;
-    }
-    if (!this.#active) return; // 준비 중 사용자가 중지함
-    try {
-      const input = await this.#buildInput();
-      await this.#provider.start(input);
-    } catch (err) {
-      this.#active = false;
       throw err;
     }
     this.#bus.emit(EventCategory.SYSTEM, SystemEvent.RECOGNITION_STARTED, {
@@ -358,11 +354,20 @@ export class SttEngine {
           mode: this.#mode,
           ...meta,
         }),
-      system: (type, payload = {}) =>
+      system: (type, payload = {}) => {
+        // Provider가 스스로 종료한 경우(치명 에러 후 onend, 자동재시작 포기 등) 엔진 상태 동기화 —
+        // 아니면 #active가 true로 남아 다음 start()가 "이미 진행 중"으로 영구 차단된다
+        if (type === SystemEvent.RECOGNITION_STOPPED && this.#active) {
+          this.#active = false;
+          this.#stopLevelMeter();
+          this.#releaseMic();
+          if (this.#mode === Mode.FILE || this.#mode === Mode.FILE_LOOPBACK) this.pause();
+        }
         this.#bus.emit(EventCategory.SYSTEM, type, {
           provider: this.#provider?.id,
           ...payload,
-        }),
+        });
+      },
       error: (err) =>
         this.#bus.emit(EventCategory.SYSTEM, SystemEvent.RECOGNITION_ERROR, {
           message: err instanceof Error ? err.message : String(err),

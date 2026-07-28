@@ -64,11 +64,9 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
   #track: MediaStreamTrack | null = null;
 
   async start(input: SttInput): Promise<void> {
+    // 시작 단계 실패는 throw — 엔진이 RECOGNITION_ERROR로 정규화하고 #active를 되돌린다
     const SR = getSR();
-    if (!SR) {
-      this._sink?.error(new Error('이 브라우저는 Web Speech API를 지원하지 않습니다 (Chrome/Edge 권장)'));
-      return;
-    }
+    if (!SR) throw new Error('이 브라우저는 Web Speech API를 지원하지 않습니다 (Chrome/Edge 권장)');
 
     // 입력 트랙 결정
     const track = input.stream?.getAudioTracks?.()[0] ?? null;
@@ -76,14 +74,11 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
     const isFile = input.mode === Mode.FILE || input.mode === Mode.FILE_LOOPBACK;
 
     if (isFile && (!track || !canTrack)) {
-      this._sink?.error(
-        new Error(
-          !canTrack
-            ? '이 브라우저는 SpeechRecognition 오디오 트랙 입력을 지원하지 않습니다. Whisper Provider를 쓰거나 최신 Chrome을 사용하세요.'
-            : '파일 오디오 트랙을 캡처하지 못했습니다.',
-        ),
+      throw new Error(
+        !canTrack
+          ? '이 브라우저는 SpeechRecognition 오디오 트랙 입력을 지원하지 않습니다. Whisper Provider를 쓰거나 최신 Chrome을 사용하세요.'
+          : '파일 오디오 트랙을 캡처하지 못했습니다.',
       );
-      return;
     }
 
     const rec = new SR();

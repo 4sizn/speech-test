@@ -48,12 +48,8 @@ export class Qwen3Provider extends SttProvider<Qwen3Config> {
 
   async start(input: SttInput): Promise<void> {
     if (!this.#isConfigured()) {
-      this._sink?.system(SystemEvent.STATUS, {
-        message: 'Qwen3 미설정 — 설정 패널에서 endpoint / apiKey 입력 필요',
-        level: 'warn',
-      });
-      this._sink?.error(new Error('Qwen3 Provider가 설정되지 않았습니다'));
-      return;
+      // 시작 단계 실패는 throw — 엔진이 RECOGNITION_ERROR로 정규화하고 #active를 되돌린다
+      throw new Error('Qwen3 미설정 — 설정 패널에서 endpoint / apiKey 입력 필요');
     }
 
     this._active = true;
