@@ -160,6 +160,20 @@ body {
   flex-direction: column;
   gap: 20px;
   min-height: 0;
+  overflow-y: auto;
+}
+/* 컬럼 높이가 부족해도 패널을 찌그러뜨리지 않는다 — 내용이 패널 밖으로 넘치는 대신 컬럼이 스크롤 */
+.col-left > .panel {
+  flex-shrink: 0;
+}
+
+/* 스크롤 영역 공통 — 다크 테마용 얇은 스크롤바 */
+.col-left,
+.transcript,
+.file-list,
+.utt-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
 }
 
 .panel {
@@ -243,6 +257,10 @@ body {
   font-size: 10.5px;
   color: var(--ink-faint);
   margin: -8px 0 16px;
+}
+/* .field 내부에 놓인 힌트(예: 실행 위치)는 위 음수 마진 대신 컨트롤 아래 여백으로 */
+.field .cap-hint {
+  margin: 7px 0 0;
 }
 
 .segmented {
