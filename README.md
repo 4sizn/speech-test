@@ -124,6 +124,10 @@ python3 -m venv .venv
   실측으로 입력 0.25s/0.75s/1.6s 모두 ≈1.0s. 그래서 partial 주기는 1.2s(faster-whisper는 0.6s)이고,
   자막 갱신 간격도 그만큼 길다. `--ncpu 8`은 효율코어까지 써서 1.7s로 **악화**됐다 → 기본 4.
 
+추론은 엔진 종류와 무관하게 **단일 워커(`INFER_POOL`)에서 직렬 실행**한다. partial 재전사와
+finalize를 동시에 돌리면 같은 torch 스레드 풀을 서로 빼앗아 호출당 1.0s → 3.2s로 악화됐다(실측).
+같은 이유로 앞선 추론이 진행 중이면 그 주기의 partial은 건너뛴다 — 결과가 뒤로 밀리지 않게.
+
 > **파일 audiotrack 실시간 STT 파이프라인** (루프백 없이):
 > `<audio> 재생 → audio.captureStream() → audio MediaStreamTrack → Provider`
 > 모든 Provider가 이 디지털 트랙을 받는다(WebSpeech는 `start(track)`, Whisper/Streaming은 `AudioPcmTap`으로 16kHz PCM 변환).

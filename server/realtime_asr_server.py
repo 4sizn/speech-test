@@ -31,11 +31,16 @@ import asyncio
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
 
 log = logging.getLogger("asr")
+
+# 추론은 단일 워커에서 직렬 실행한다. partial 재전사와 finalize가 동시에 돌면
+# 같은 torch 스레드 풀을 서로 빼앗아 호출당 지연이 3배 이상 늘어난다(실측).
+INFER_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="asr-infer")
 
 SAMPLE_RATE = 16000
 MODELS_DIR = Path(__file__).parent / "models"
@@ -173,6 +178,15 @@ class Session:
         self.fun_pending = np.zeros(0, dtype=np.float32)
         # 엔진이 자기 추론 비용에 맞는 주기를 선언하면 그걸 쓴다(SenseVoice=1.2s)
         self.partial_interval = getattr(engine, "PARTIAL_INTERVAL_SEC", PARTIAL_INTERVAL_SEC)
+        # 이 세션의 추론이 진행 중인지 — partial_loop이 locked()로 보고 그 주기를 건너뛴다.
+        # 플래그가 아니라 Lock이어야 한다: partial과 finalize가 겹칠 때 먼저 끝난 쪽이
+        # 플래그를 내려 "진행 중 아님"으로 오판하는 창이 생긴다.
+        self.infer_lock = asyncio.Lock()
+
+    async def infer(self, fn, *args):
+        """추론을 전역 단일 워커에 위임한다 — 동시 실행 시 스레드 경쟁으로 되레 느려진다."""
+        async with self.infer_lock:
+            return await self.loop.run_in_executor(INFER_POOL, fn, *args)
 
     async def send(self, text: str, is_final: bool):
         if not text and not is_final:
@@ -208,7 +222,7 @@ class Session:
         n = FunAsrEngine.CHUNK_SAMPLES
         while len(self.fun_pending) >= n:
             chunk, self.fun_pending = self.fun_pending[:n], self.fun_pending[n:]
-            text = await self.loop.run_in_executor(None, self.engine.feed, self.fun_state, chunk, False)
+            text = await self.infer(self.engine.feed, self.fun_state, chunk, False)
             if text and text != self.last_partial:
                 self.last_partial = text
                 await self.send(text, False)
@@ -222,8 +236,10 @@ class Session:
                 await asyncio.sleep(self.partial_interval)
                 if not self.had_speech or len(self.buf) < SAMPLE_RATE // 2:
                     continue
+                if self.infer_lock.locked():
+                    continue  # 앞선 추론이 진행 중 — 재전사를 쌓으면 결과가 계속 뒤로 밀린다
                 snapshot = self.buf[-SAMPLE_RATE * 15 :]  # 최근 15초까지만
-                text = await self.loop.run_in_executor(None, self.engine.transcribe, snapshot, self.lang)
+                text = await self.infer(self.engine.transcribe, snapshot, self.lang)
                 if text and text != self.last_partial:
                     self.last_partial = text
                     await self.send(text, False)
@@ -233,14 +249,14 @@ class Session:
             if self.fun_state and (self.fun_state["text"] or len(self.fun_pending)):
                 pad = np.zeros(FunAsrEngine.CHUNK_SAMPLES, dtype=np.float32)
                 tail = np.concatenate([self.fun_pending, pad])[: FunAsrEngine.CHUNK_SAMPLES]
-                text = await self.loop.run_in_executor(None, self.engine.feed, self.fun_state, tail, True)
+                text = await self.infer(self.engine.feed, self.fun_state, tail, True)
                 if text:
                     await self.send(text, True)
                 self.fun_state = self.engine.new_stream()
                 self.fun_pending = np.zeros(0, dtype=np.float32)
         else:
             if len(self.buf) >= SAMPLE_RATE // 4:
-                text = await self.loop.run_in_executor(None, self.engine.transcribe, self.buf, self.lang)
+                text = await self.infer(self.engine.transcribe, self.buf, self.lang)
                 if text:
                     await self.send(text, True)
             self.buf = np.zeros(0, dtype=np.float32)
