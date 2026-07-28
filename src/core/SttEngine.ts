@@ -188,9 +188,27 @@ export class SttEngine {
     if (!this.#provider.supports(this.#mode)) {
       throw new Error(`현재 Provider는 "${this.#mode}" 모드를 지원하지 않습니다`);
     }
-    const input = await this.#buildInput();
     this.#active = true;
-    await this.#provider.start(input);
+    try {
+      // 모델 로드 같은 무거운 준비를 재생/캡처 시작 *전에* 끝낸다 —
+      // 준비 중에 재생된 파일 앞부분이 인식에서 잘리는 문제 방지
+      await this.#provider.prepare();
+    } catch (err) {
+      this.#active = false;
+      this.#bus.emit(EventCategory.SYSTEM, SystemEvent.RECOGNITION_ERROR, {
+        message: err instanceof Error ? err.message : String(err),
+        provider: this.#provider.id,
+      });
+      throw err;
+    }
+    if (!this.#active) return; // 준비 중 사용자가 중지함
+    try {
+      const input = await this.#buildInput();
+      await this.#provider.start(input);
+    } catch (err) {
+      this.#active = false;
+      throw err;
+    }
     this.#bus.emit(EventCategory.SYSTEM, SystemEvent.RECOGNITION_STARTED, {
       provider: this.#provider.id,
       mode: this.#mode,

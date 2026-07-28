@@ -67,6 +67,16 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
   #samples = 0;
   #busy = false;
 
+  /** 모델 로드/컴파일 — 엔진이 재생 시작 전에 호출한다. */
+  override async prepare(): Promise<void> {
+    try {
+      await this.#ensureModel();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Whisper 로드 실패: ${msg} — 모델 자산이 없으면 npm run assets로 받아주세요`);
+    }
+  }
+
   async start(input: SttInput): Promise<void> {
     if (!input.stream) {
       this._sink?.error(new Error('PCM 스트림이 없습니다 (파일/마이크 캡처 실패)'));
@@ -75,7 +85,7 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
     this._active = true;
 
     try {
-      await this.#ensureModel();
+      await this.#ensureModel(); // prepare()가 로드해 둔 모델 재사용(설정이 바뀌었으면 재로드)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this._sink?.error(new Error(`Whisper 로드 실패: ${msg} — 모델 자산이 없으면 npm run assets로 받아주세요`));

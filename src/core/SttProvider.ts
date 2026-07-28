@@ -178,6 +178,13 @@ export abstract class SttProvider<C extends ProviderConfig = ProviderConfig> {
     this._sink?.system(SystemEvent.PROVIDER_INIT, { provider: this.id });
   }
 
+  /**
+   * 인식 시작 직전의 무거운 준비 단계(모델 다운로드/컴파일 등). 엔진이 오디오 재생/캡처를
+   * 시작하기 *전에* 호출한다 — 준비 중에 재생된 파일 앞부분이 인식에서 잘리지 않게 한다.
+   * 기본은 no-op. 실패는 throw로 알린다(엔진이 RECOGNITION_ERROR로 정규화).
+   */
+  async prepare(): Promise<void> {}
+
   /** 인식을 시작한다. */
   abstract start(input: SttInput): Promise<void>;
 
