@@ -2,6 +2,7 @@
   "name": "speech-test",
   "version": "0.1.0",
   "devDependencies": {
+    "@types/node": "^26.1.2",
     "typescript": "^7.0.2",
     "vite": "^8.1.5"
   },
