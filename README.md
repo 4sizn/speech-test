@@ -77,7 +77,7 @@ WebSpeech    Whisper          Streaming        Qwen3
 | Provider | 마이크 | 파일 | 방식 / 비고 |
 |---|---|---|---|
 | **WebSpeech** | ✅ 네이티브 실시간 | ✅ 디지털 트랙 입력 | `start(MediaStreamTrack)` (Chrome ~M133+). captureStream 트랙을 직접 인식 → 노이즈/볼륨 무관 |
-| **Whisper** | ✅ 근실시간 | ✅ 근실시간 | 클라이언트 WASM/WebGPU(transformers.js 번들). 키·외부 도메인 불필요 — 자산은 `npm run assets`로 자체 서빙 |
+| **Whisper** | ✅ 근실시간 | ✅ 근실시간 | 클라이언트 WASM/WebGPU(transformers.js 번들). 키·외부 도메인 불필요 — 자산은 `npm run assets`로 자체 서빙. 무음 경계로 발화를 잘라 인식(기본 base) |
 | **Streaming** | ✅ 실시간 | ✅ 실시간 | WebSocket(16k Int16 PCM 전송 → partial/final 수신). 온프레미스 백엔드 동봉: `server/realtime_asr_server.py --engine faster-whisper` |
 | **FunASR** | ✅ 실시간 | ✅ 실시간 | paraformer-zh-streaming 증분 디코딩(중국어 전용). 백엔드: `server/… --engine funasr` — 공식 WASM 런타임이 없어 온프레미스만 |
 | **SenseVoice** | ✅ 실시간 | ✅ 실시간 | SenseVoiceSmall 다국어(**ko**/ja/en/zh/yue). 백엔드: `server/… --engine sensevoice` — offline 모델이라 증분 대신 재전사 partial(CPU 기준 ≈1.2s 간격) |
@@ -127,6 +127,42 @@ python3 -m venv .venv
 추론은 엔진 종류와 무관하게 **단일 워커(`INFER_POOL`)에서 직렬 실행**한다. partial 재전사와
 finalize를 동시에 돌리면 같은 torch 스레드 풀을 서로 빼앗아 호출당 1.0s → 3.2s로 악화됐다(실측).
 같은 이유로 앞선 추론이 진행 중이면 그 주기의 partial은 건너뛴다 — 결과가 뒤로 밀리지 않게.
+
+### Whisper(local-client) 한국어 정확도 — 실측과 대응
+
+AI Hub 상담 음성(8kHz 전화, 정답 전사 포함)으로 CER을 재고 설정을 정했다.
+짧은 발화 12개(2~10초)와 긴 연속 오디오 2개(35·39초, 발화 7개를 0.5s 무음으로 이어붙임) 기준.
+
+| 설정 | 짧은 발화 CER | 긴 오디오 CER |
+|---|---|---|
+| tiny · 5초 고정 청크 (이전 기본값) | **458%** | — |
+| base · 5초 고정 청크 | 27.6% | **175.8%** |
+| base · 무음 경계 분할 | — | **26.5%** |
+| base · 전체 + `chunk_length_s=30`/`stride=5` | 24.6% | 23.4% |
+| small · 무음 경계 + 반복 축약 | — | 26.0% |
+
+CER이 100%를 넘는 값은 오인식이 아니라 **환각**이다 — 참조보다 몇 배 긴 텍스트를 만들어낸다.
+실제 사례: 5초 고정 청크가 발화 중간을 자르자 `"이 시각에서"`가 100회 이상 반복(CER 309%),
+small에서는 이메일 스펠링 구간이 `"…-2-2-2-2-2…"`로 수백 자 이어졌다(CER 129%).
+
+그래서 세 가지를 바꿨다.
+
+1. **기본 모델 tiny → base.** tiny는 8kHz 전화 음성에서 사실상 사용 불가(458%). 선택지에는 남겨
+   두되 라벨에 비권장을 표시했다. 깨끗한 16kHz 마이크 녹음에서는 tiny도 쓸 만하다.
+2. **고정 5초 청크 → 무음 경계 분할**(RMS 0.008 · 무음 0.5s · 최소 1s · 최대 `maxChunkSec`).
+   발화 중간을 자르지 않아 반복 환각이 사라지고, 발화 전 무음은 버려 없는 말을 만들지 않는다.
+   온프레미스 서버(`realtime_asr_server.py`)와 같은 규칙이다.
+3. **반복 환각 축약 후처리**(`collapseHallucinatedRepeats`). 어절 n-gram과 토큰 내부 문자 패턴의
+   연속 반복을 2회로 줄인다. 환각 사례는 175.8%→41.1%, 129%→41% 로 잡히고 **정상 결과의 CER은
+   변하지 않았다**(26.5%→26.5%, 23.4%→23.4%).
+
+측정해 보고 **넣지 않은 것**: `no_repeat_ngram_size=3`은 정상 문장을 건드려 24.6%→25.4%로
+악화됐고, `num_beams=3`은 CER 변화 없이 시간만 늘었다(둘 다 짧은 발화 12개 기준).
+
+> `chunk_length_s=30`/`stride_length_s=5`는 발화가 `maxChunkSec`로 강제 확정될 때를 위한
+> 안전장치로 인식 호출에 함께 넘긴다(Whisper 인식 창이 30s이므로 초과분은 5s 겹쳐 청킹).
+> 긴 오디오를 한 번에 넣는 방식이 CER은 가장 낮았지만(23.4%), 재생과 동기된 실시간 자막이
+> 이 페이지의 목적이라 기본 경로로는 쓰지 않는다.
 
 > **파일 audiotrack 실시간 STT 파이프라인** (루프백 없이):
 > `<audio> 재생 → audio.captureStream() → audio MediaStreamTrack → Provider`
@@ -233,7 +269,7 @@ CER 산출 주의점(코드에 반영됨):
 ## 알려진 제약 / TODO
 
 - **WebSpeech 파일 인식**: `start(MediaStreamTrack)`(Chrome ~M133+)으로 captureStream 트랙을 직접 인식 → 가능·노이즈/볼륨 무관(검증됨). Chromium 데스크톱 전용, 미지원 시 Whisper 폴백.
-- **Whisper(local-client)**: 코드/모델/WASM 런타임 전부 same-origin 자산 — 최초 1회 `npm run assets` 필요(미준비 시 안내 에러). 멀티스레드 WASM은 COOP/COEP(`credentialless`) 헤더 필요 — vite dev/preview에는 설정돼 있고, 미적용 호스팅에서는 단일 스레드로 폴백. WebGPU는 fp32 가중치(`npm run assets -- --webgpu`)가 있을 때만 시도. `Xenova/whisper-tiny`는 가볍지만 정확도 낮음 → 한국어는 `whisper-base`+ 권장. 청크 단위 인식이라 청크 경계 지연 있음.
+- **Whisper(local-client)**: 코드/모델/WASM 런타임 전부 same-origin 자산 — 최초 1회 `npm run assets` 필요(미준비 시 안내 에러). 멀티스레드 WASM은 COOP/COEP(`credentialless`) 헤더 필요 — vite dev/preview에는 설정돼 있고, 미적용 호스팅에서는 단일 스레드로 폴백. WebGPU는 fp32 가중치(`npm run assets -- --webgpu`)가 있을 때만 시도. 한국어 기본은 `whisper-base`(tiny는 8kHz 전화 음성에서 CER 458% — 위 실측 참조). 발화 단위 인식이라 발화가 끝나고 무음 0.5s가 지난 뒤 자막이 뜬다(발화 도중 부분 결과는 없음).
 - **Streaming**: 동봉된 온프레미스 서버(`server/realtime_asr_server.py`)의 프로토콜이 기본값. 외부 클라우드 벤더에 붙이려면 `#onOpen`/`#send`/`#onMessage`를 해당 스펙에 맞춰 조정.
 - **FunASR**: 기본 모델(paraformer-zh-streaming)이 중국어 전용 — 한국어 실시간은 SenseVoice 또는 Streaming(faster-whisper)을 사용. 공식 브라우저(WASM) 런타임이 없어 실행 위치는 온프레미스만.
 - **SenseVoice**: 다국어(ko/ja/en/zh/yue)지만 offline 모델이라 FunASR paraformer 같은 증분 스트리밍은 아니다(무음 경계 확정 + 주기 재전사 partial). 모델 ≈936MB 최초 다운로드 필요. 공식 브라우저 런타임 미사용 — 실행 위치는 온프레미스만.
