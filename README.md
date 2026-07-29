@@ -176,7 +176,9 @@ Provider는 인식이 실제로 일어나는 위치를 선언하고(`static loca
 - **`remote-onpremise`** — 사내(자체 구축) 서버로 전송해 처리 (Streaming · FunASR · SenseVoice)
 - **`remote-cloud`** — 외부 클라우드 서비스로 전송해 처리 (WebSpeech 기본 · Streaming · Qwen3)
 
-WebSpeech에서 `local-client` 선택 시 Chrome 온디바이스(SODA, `processLocally`) 인식을 쓴다.
+WebSpeech에서 `local-client` 선택 시 Chrome 온디바이스(SODA, `processLocally`) 인식을 쓴다 —
+**단, 이미 설치된 언어팩만 쓴다.** 우리가 `SpeechRecognition.install()`을 부르지는 않는다.
+아래 "온디바이스 언어팩을 자동 설치하지 않는 이유"를 참고.
 
 ### 온프레미스 실시간 STT 서버 (faster-whisper / FunASR / SenseVoice)
 
@@ -352,6 +354,29 @@ CER 산출 주의점(코드에 반영됨):
 ## 알려진 제약 / TODO
 
 - **WebSpeech 파일 인식**: `start(MediaStreamTrack)`(Chrome ~M133+)으로 captureStream 트랙을 직접 인식 → 가능·노이즈/볼륨 무관(검증됨). Chromium 데스크톱 전용, 미지원 시 Whisper 폴백.
+- **⚠ ko-KR SODA 언어팩이 있으면 한국어 WebSpeech가 통째로 죽는다** (Chrome 150 실측).
+  팩이 설치돼 있으면 `processLocally=false`로 명시해도, 실행 위치를 클라우드로 골라도 **전부 즉시
+  `network`로 실패**한다. 같은 Chrome에서 en-US는 정상이라 언어 단위 문제다. 실험으로 확정한 인과:
+
+  | 조건 | `available({processLocally:true})` | 한국어 인식 |
+  |---|---|---|
+  | ko-KR 팩 있음 | `available` | **전부 `network` 실패** |
+  | 팩 제거 + Chrome 재시작 | `downloadable` | **정상** |
+  | QA에서 `--disable-component-update`로 팩 차단 | — | **CER 7.8% (정상)** |
+
+  팩은 두 경로로 들어온다 — ① `SpeechRecognition.install()` 호출, ② **Chrome이 새 프로필에서
+  스스로 컴포넌트 업데이터로 내려받음**(우리 코드와 무관). ①은 제거했다(아래), ②는 QA에서
+  `--disable-component-update`로 막는다. 실사용 브라우저에서 이 증상이 나면 팩 디렉터리
+  (`~/Library/Application Support/Google/Chrome/SODALanguagePacks/ko-KR`)를 치우고 Chrome을
+  재시작하면 회복된다.
+- **그래서 온디바이스 언어팩을 자동 설치하지 않는다** — `install()`은 브라우저 전역 상태를 바꾸는데,
+  그 결과가 위처럼 그 언어의 인식을 통째로 못 쓰게 만들 수 있다. 설치는 브라우저·OS 설정에 맡기고
+  준비된 것만 쓴다. 그리고 **`available()` 보고를 신뢰하지 않는다**: 온디바이스로 시작했다가
+  `network`/`language-not-supported`로 거부되면 온라인으로 1회 자동 폴백한다(가용성 조회 대신
+  실제 시작을 검증으로 삼는다).
+- **인식 에러는 토스트로 남긴다** — 상태줄만 쓰면 지워진다. 실측: 시작 실패 에러가 118ms에 떴다가
+  중지 이벤트에 밀려 **119ms에 '대기 중'으로 덮여**, 사용자에게는 아무 안내 없이 "그냥 안 됨"으로
+  보였다. 이제 에러는 항상 토스트(9초)로 뜨고, 에러 직후 3초 안의 중지는 상태를 덮지 않는다.
 - **Whisper(local-client) 추론은 Web Worker에서 돈다**(`src/providers/whisper-worker.ts`).
   메인 스레드에서 돌리면 인식 중 페이지가 멈춘다 — 실측으로 3.3초 오디오 1건에 최대 1,123ms
   프레임 갭, 총 2.6초 정지였고 긴 파일·small 모델에서는 "먹통"으로 체감된다. 워커로 옮긴 뒤

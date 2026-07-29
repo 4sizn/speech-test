@@ -125,19 +125,25 @@ engine.bus.system((m) => {
       showToast('모델 준비 완료 — 인식을 진행합니다', { kind: 'ok' });
       break;
     case SystemEvent.RECOGNITION_STARTED:
+      lastErrorAt = 0;
       setRunning(true);
       setStatus(`인식 시작 · ${m.payload.provider} / ${modeLabel(m.payload.mode)}`, 'ok');
       break;
     case SystemEvent.RECOGNITION_STOPPED:
       setRunning(false);
       setBusy(false); // 로딩 중 중지(탈출구)로 끝난 경우도 컨트롤 복구
-      setStatus('대기 중', 'idle');
+      // 에러 직후의 중지는 정상 종료가 아니다 — 방금 띄운 에러를 '대기 중'으로 덮지 않는다
+      if (performance.now() - lastErrorAt > 3000) setStatus('대기 중', 'idle');
       break;
     case SystemEvent.RECOGNITION_ERROR:
-      if (busy) {
-        setBusy(false);
-        showToast(`모델 로딩 실패: ${m.payload.message}`, { kind: 'error', duration: 6000 });
-      }
+      lastErrorAt = performance.now();
+      // 토스트는 busy(모델 로딩) 때만이 아니라 **항상** 띄운다 — status는 다음 이벤트에
+      // 덮일 수 있고, 시작 실패는 대부분 사용자가 다음 행동을 골라야 하는 상황이다
+      showToast(`${busy ? '모델 로딩 실패' : '인식 실패'}: ${m.payload.message}`, {
+        kind: 'error',
+        duration: 9000,
+      });
+      setBusy(false);
       setStatus(`에러: ${m.payload.message}`, 'error');
       break;
     case SystemEvent.AUDIO_LOADED:
@@ -374,6 +380,12 @@ function setActiveMode(mode: Mode): void {
 // 컨트롤 잠금 상태: running(인식 중) + busy(모델 로딩 등 준비 중)
 let running = false;
 let busy = false;
+/**
+ * 마지막 인식 에러 시각(ms) — 에러 직후 도착하는 중지 이벤트가 에러 메시지를 덮지 않게 쓴다.
+ * 실측: WebSpeech 시작 실패에서 118ms에 뜬 에러가 119ms에 '대기 중'으로 덮여, 사용자에게는
+ * 아무 안내 없이 "그냥 안 됨"으로 보였다.
+ */
+let lastErrorAt = 0;
 
 /** running/busy/Provider capabilities를 종합해 컨트롤 활성 상태를 일괄 반영한다. */
 function applyControls(): void {

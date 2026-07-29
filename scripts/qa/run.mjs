@@ -211,6 +211,12 @@ const browser = await puppeteer.launch({
     '--autoplay-policy=no-user-gesture-required',
     '--use-fake-ui-for-media-stream',
     '--disable-features=CalculateNativeWinOcclusion',
+    // 온디바이스 음성 인식(SODA) 언어팩이 측정 중에 내려오지 않게 컴포넌트 업데이터를 끈다.
+    // 실측: 새 프로필로 시작하면 Chrome이 스스로 ko-KR SODA 팩을 받고, 그 팩이 있으면
+    // 한국어 WebSpeech가 온라인 경로까지 전부 즉시 network로 실패한다(en-US는 정상).
+    // 7/28에 8.7%로 측정되던 webspeech-file이 7/29 팩 생성 이후 100%로 바뀐 것이 그 결과다.
+    // 측정 환경을 결정론적으로 두기 위한 조치 — 앱 동작과는 무관하다.
+    '--disable-component-update',
   ],
 });
 

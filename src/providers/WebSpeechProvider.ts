@@ -91,6 +91,8 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
   #track: MediaStreamTrack | null = null;
   /** 온디바이스 모델 확인 결과 — prepare()에서 미리 정해두고 start()에서는 쓰기만 한다 */
   #offline: boolean | null = null;
+  /** 온디바이스 거부 후 온라인으로 되돌린 적이 있는가 — 재시도는 세션당 1회 */
+  #onlineRetried = false;
 
   /**
    * 온디바이스(SODA) 모델 가용성 확인·설치를 재생 **전에** 끝낸다.
@@ -113,6 +115,7 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
   }
 
   async start(input: SttInput): Promise<void> {
+    this.#onlineRetried = false; // 세션마다 온라인 폴백 기회를 새로 준다
     // 시작 단계 실패는 throw — 엔진이 RECOGNITION_ERROR로 정규화하고 #active를 되돌린다
     const SR = getSR();
     if (!SR) throw new Error('이 브라우저는 Web Speech API를 지원하지 않습니다 (Chrome/Edge 권장)');
@@ -157,6 +160,27 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
     let fatal = false;
     rec.onerror = (event) => {
       if (event.error === 'aborted' || event.error === 'no-speech') return; // 양성: 자동재시작에 맡김
+      // 온디바이스로 시작했다가 즉시 거부되면 온라인으로 한 번 되돌린다.
+      // `available` 보고를 믿을 수 없기 때문이다 — 실측으로 구버전 언어팩이 available로
+      // 보고되면서 그 언어의 인식이 전부 network로 실패했다. 가용성 조회 대신 실제 시작을
+      // 검증으로 삼는다. 재시도는 1회뿐(무한 루프 방지).
+      const REDIRECTABLE = ['network', 'language-not-supported', 'service-not-allowed'];
+      if (rec.processLocally && !this.#onlineRetried && REDIRECTABLE.includes(event.error)) {
+        this.#onlineRetried = true;
+        this.#offline = false;
+        rec.processLocally = false;
+        this._sink?.system(SystemEvent.STATUS, {
+          message: `온디바이스 인식이 거부됐습니다(${event.error}) → 온라인으로 다시 시도합니다`,
+          level: 'warn',
+        });
+        try {
+          if (this.#track) rec.start(this.#track);
+          else rec.start();
+          return;
+        } catch {
+          /* 아래 공통 처리로 내려간다 */
+        }
+      }
       // 치명적 에러는 재시작하면 무한 루프 → 중단
       const FATAL = ['not-allowed', 'service-not-allowed', 'language-not-supported', 'audio-capture', 'network'];
       if (FATAL.includes(event.error)) {
@@ -200,8 +224,16 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
   }
 
   /**
-   * 온디바이스 인식 모델(SODA 언어팩) 가용성 확인 + 필요시 설치.
-   * @returns false=사용 불가(온라인 폴백), true/undefined=진행
+   * 온디바이스 인식 모델(SODA 언어팩) 가용성 확인.
+   *
+   * **설치(SR.install)를 자동으로 부르지 않는다.** 자동 설치는 브라우저 전역 상태를 바꾸는데,
+   * 실측으로 그 부작용이 컸다: 구버전·불완전한 ko-KR 언어팩(30파일/53MB, v1.3073 — 같은
+   * Chrome의 en-US는 185파일/194MB, v1.5075)이 install 후 `available`로 보고되기 시작했고,
+   * 그 뒤로 한국어는 `processLocally=false`로 명시해도, 클라우드를 골라도 전부 즉시 `network`로
+   * 실패했다(영어는 정상). 즉 설치가 그 언어의 인식을 통째로 못 쓰게 만들 수 있다.
+   * 언어팩 설치는 브라우저·OS 설정에 맡기고, 우리는 이미 준비된 것만 쓴다.
+   *
+   * @returns false=사용 불가(온라인으로 진행), true/undefined=온디바이스 시도 가능
    */
   async #ensureLocalModel(lang: string): Promise<boolean | undefined> {
     const SR = getSR();
@@ -214,27 +246,17 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
       return undefined;
     }
 
-    if (status === 'downloadable' || status === 'downloading') {
-      this._sink?.system(SystemEvent.MODEL_LOADING, { message: `온디바이스 모델 다운로드 중… (${lang})` });
-      try {
-        if (typeof SR.install === 'function') await SR.install({ langs: [lang], processLocally: true });
-        this._sink?.system(SystemEvent.MODEL_READY, { message: `온디바이스 모델 준비 완료 (${lang})` });
-        return true;
-      } catch {
-        this._sink?.system(SystemEvent.STATUS, { message: `온디바이스 모델 설치 실패 → 온라인으로 진행`, level: 'warn' });
-        return false;
-      }
-    }
+    if (status === 'available') return true;
 
-    if (status === 'unavailable') {
-      this._sink?.system(SystemEvent.STATUS, {
-        message: `이 환경은 ${lang} 온디바이스 인식 미지원 → 온라인으로 진행`,
-        level: 'warn',
-      });
-      return false;
-    }
-
-    return true; // 'available'
+    this._sink?.system(SystemEvent.STATUS, {
+      message:
+        status === 'unavailable'
+          ? `이 환경은 ${lang} 온디바이스 인식 미지원 → 온라인으로 진행`
+          : `${lang} 온디바이스 모델이 아직 준비되지 않았습니다(${status}) → 온라인으로 진행. ` +
+            `온디바이스로 쓰려면 브라우저·OS 설정에서 음성 인식 언어를 먼저 설치하세요`,
+      level: 'warn',
+    });
+    return false;
   }
 
   override async stop(): Promise<void> {
