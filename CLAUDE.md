@@ -38,9 +38,12 @@ WebSpeech에서 마이크 트랙만 실패하는 결함이 CER 5.0%로 통과한
 
 WebSpeech가 CER 100%로 찍힌 것을 "브라우저 인식 서비스가 거부하는 상태(쿼터/정책), 코드로
 우회 불가"로 판정하고 `gateOptional`로 넘긴 적이 있다. **오진이었다.** 실제 원인은 환경 상태였고
-**우리가 통제할 수 있었다** — ko-KR SODA 언어팩이 설치돼 있으면 한국어 인식이 온라인 경로까지
-전부 `network`로 실패한다. QA에서 `--disable-component-update`로 팩을 막자 CER이 100%에서
-7.8%로 돌아왔다. 우리 Provider의 `install()` 자동 호출도 그 팩을 들이는 한 경로였다.
+**우리가 만들었다** — ko-KR 온디바이스 모델이 `available`로 보고되면 한국어 인식이 온라인
+경로까지 전부 `network`로 실패하는데, 그 상태로 전이시킨 것이 우리 Provider의
+`SpeechRecognition.install()` 자동 호출이었다. QA에서 `--disable-component-update`로 변수를
+없애자 CER이 100%에서 7.8%로 돌아왔다.
+(팩이 디렉터리에 있는 것 자체는 무해하다 — `downloadable`인 동안은 온라인 인식이 정상이다.
+"환경 탓"과 "우리가 환경을 바꿨다"를 가르는 지점이 여기였다.)
 
 판정 순서를 지킨다:
 

@@ -373,21 +373,23 @@ CER 산출 주의점(코드에 반영됨):
 ## 알려진 제약 / TODO
 
 - **WebSpeech 파일 인식**: `start(MediaStreamTrack)`(Chrome ~M133+)으로 captureStream 트랙을 직접 인식 → 가능·노이즈/볼륨 무관(검증됨). Chromium 데스크톱 전용, 미지원 시 Whisper 폴백.
-- **⚠ ko-KR SODA 언어팩이 있으면 한국어 WebSpeech가 통째로 죽는다** (Chrome 150 실측).
-  팩이 설치돼 있으면 `processLocally=false`로 명시해도, 실행 위치를 클라우드로 골라도 **전부 즉시
-  `network`로 실패**한다. 같은 Chrome에서 en-US는 정상이라 언어 단위 문제다. 실험으로 확정한 인과:
+- **⚠ ko-KR 온디바이스 모델이 `available`로 보고되면 한국어 WebSpeech가 통째로 죽는다**
+  (Chrome 150 실측). 그 상태에서는 `processLocally=false`로 명시해도, 실행 위치를 클라우드로
+  골라도 **전부 즉시 `network`로 실패**한다. 같은 Chrome에서 en-US는 정상이라 언어 단위 문제다.
 
-  | 조건 | `available({processLocally:true})` | 한국어 인식 |
+  | `available({processLocally:true})` | 언어팩 디렉터리 | 한국어 인식 |
   |---|---|---|
-  | ko-KR 팩 있음 | `available` | **전부 `network` 실패** |
-  | 팩 제거 + Chrome 재시작 | `downloadable` | **정상** |
-  | QA에서 `--disable-component-update`로 팩 차단 | — | **CER 7.8% (정상)** |
+  | `available` | 있음(30파일·53MB·v1.3073) | **전부 `network` 실패** |
+  | `downloadable` | **있음(같은 팩)** | **정상** ← 팩 존재 자체는 무해하다 |
+  | `downloadable` | 없음(제거 + Chrome 재시작) | **정상** |
 
-  팩은 두 경로로 들어온다 — ① `SpeechRecognition.install()` 호출, ② **Chrome이 새 프로필에서
-  스스로 컴포넌트 업데이터로 내려받음**(우리 코드와 무관). ①은 제거했다(아래), ②는 QA에서
-  `--disable-component-update`로 막는다. 실사용 브라우저에서 이 증상이 나면 팩 디렉터리
+  **실패 조건은 "팩이 있다"가 아니라 "`available`로 보고된다"다.** 그리고 그 상태로 전이시킨 것이
+  우리 코드의 `SpeechRecognition.install()` 자동 호출이었다 — 그 호출을 제거했으므로 재발하지
+  않는다. Chrome이 컴포넌트 업데이터로 팩을 내려받는 것 자체는 막을 수 없지만(우리 코드와 무관),
+  받아만 두고 `downloadable`인 동안은 온라인 인식이 정상이다(실측 확인).
+  만약 이 증상이 다시 나타나면 팩 디렉터리
   (`~/Library/Application Support/Google/Chrome/SODALanguagePacks/ko-KR`)를 치우고 Chrome을
-  재시작하면 회복된다.
+  재시작하면 회복된다. QA는 `--disable-component-update`로 변수 자체를 없애 결정론을 지킨다.
 - **그래서 온디바이스 언어팩을 자동 설치하지 않는다** — `install()`은 브라우저 전역 상태를 바꾸는데,
   그 결과가 위처럼 그 언어의 인식을 통째로 못 쓰게 만들 수 있다. 설치는 브라우저·OS 설정에 맡기고
   준비된 것만 쓴다. 그리고 **`available()` 보고를 신뢰하지 않는다**: 온디바이스로 시작했다가
