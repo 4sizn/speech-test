@@ -193,7 +193,7 @@
       "skipped": null,
       "note": "클라우드 인식 — 실행마다 흔들린다",
       "tolerance": 0.07,
-      "gateOptional": true,
+      "gateOptional": false,
       "runsInDoc": 19,
       "prev": 0.0781
     },
@@ -207,7 +207,7 @@
       "skipped": null,
       "note": "클라우드 인식 · 파일 주입 가짜 마이크",
       "tolerance": 0.07,
-      "gateOptional": true,
+      "gateOptional": false,
       "runsInDoc": 18,
       "prev": 0.0499
     },

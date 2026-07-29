@@ -135,10 +135,12 @@ export function buildFeatures(profile = 'quick') {
       location: 'remote-cloud',
       config: {},
       sets: ['short'],
-      gateOptional: true, // 외부 서비스 상태에 좌우된다 — 결과지에는 남기고 게이트 판정에서는 WARN
+      // gateOptional을 뗐다 — 그 플래그의 근거였던 "브라우저 서비스가 거부한다"는 판정이 오진이었고
+      // (진짜 원인은 ko-KR SODA 언어팩), 러너에서 팩 유입을 막은 뒤 8.7%로 결정론적으로 측정된다.
+      // 정식 게이트 대상이다: 회귀하면 푸시가 막힌다.
       tolerance: 0.07,
       requires: { network: true },
-      note: '클라우드 인식 — 실행마다 흔들린다',
+      note: '클라우드 인식 — 실행마다 흔들린다(허용 7%p)',
     },
     {
       feature: 'webspeech-mic',
@@ -147,10 +149,9 @@ export function buildFeatures(profile = 'quick') {
       location: 'remote-cloud',
       config: {},
       sets: ['short'],
-      gateOptional: true, // 외부 서비스 상태에 좌우된다 — 결과지에는 남기고 게이트 판정에서는 WARN
       tolerance: 0.07,
       requires: { network: true },
-      note: '클라우드 인식 · 파일 주입 가짜 마이크',
+      note: '클라우드 인식 · 파일 주입 가짜 마이크(허용 7%p)',
     },
     {
       feature: 'qwen3-file',
@@ -198,7 +199,10 @@ export function buildFeatures(profile = 'quick') {
       location: 'local-client',
       config: {},
       sets: ['short'],
-      gateOptional: true, // 온디바이스 언어팩 설치 상태(환경)에 좌우된다 — 결과지에만 남긴다
+      // 유일하게 남은 gateOptional — 근거가 실재한다: 러너가 --disable-component-update로 언어팩
+      // 유입을 막으므로 이 기능은 보통 온디바이스가 아니라 온라인 폴백을 측정한다(즉 무엇을 재는지가
+      // 환경에 따라 바뀐다). 온디바이스 경로를 실제로 재려면 언어팩이 설치된 환경이 필요하다.
+      gateOptional: true,
       tolerance: 0.07,
       requires: { soda: true },
       // 이 기능이 QA 환경을 오염시킨 전례가 있다: Provider가 install()을 자동 호출하던 시절,
