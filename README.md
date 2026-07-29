@@ -160,7 +160,7 @@ WebSpeech    Whisper          Streaming        Qwen3
 | Provider | 마이크 | 파일 | 방식 / 비고 |
 |---|---|---|---|
 | **WebSpeech** | ✅ 네이티브 실시간 | ✅ 디지털 트랙 입력 | `start(MediaStreamTrack)` (Chrome ~M133+). captureStream 트랙을 직접 인식 → 노이즈/볼륨 무관 |
-| **Whisper** | ✅ 근실시간 | ✅ 근실시간 | 클라이언트 WASM/WebGPU(transformers.js 번들). 키·외부 도메인 불필요 — 자산은 `npm run assets`로 자체 서빙. 무음 경계로 발화를 잘라 인식(기본 base) |
+| **Whisper** | ✅ 근실시간 | ✅ 근실시간 | 클라이언트 WASM/WebGPU(transformers.js 번들). 키·외부 도메인 불필요 — 자산은 `npm run assets`로 자체 서빙. 무음 경계로 발화를 잘라 인식(기본 base). **추론은 Web Worker** — 메인 스레드에서 돌리면 UI가 멈춘다 |
 | **Streaming** | ✅ 실시간 | ✅ 실시간 | WebSocket(16k Int16 PCM 전송 → partial/final 수신). 온프레미스 백엔드 동봉: `server/realtime_asr_server.py --engine faster-whisper` |
 | **FunASR** | ✅ 실시간 | ✅ 실시간 | paraformer-zh-streaming 증분 디코딩(중국어 전용). 백엔드: `server/… --engine funasr` — 공식 WASM 런타임이 없어 온프레미스만 |
 | **SenseVoice** | ✅ 실시간 | ✅ 실시간 | SenseVoiceSmall 다국어(**ko**/ja/en/zh/yue). 백엔드: `server/… --engine sensevoice` — offline 모델이라 증분 대신 재전사 partial(CPU 기준 ≈1.2s 간격) |
@@ -352,6 +352,12 @@ CER 산출 주의점(코드에 반영됨):
 ## 알려진 제약 / TODO
 
 - **WebSpeech 파일 인식**: `start(MediaStreamTrack)`(Chrome ~M133+)으로 captureStream 트랙을 직접 인식 → 가능·노이즈/볼륨 무관(검증됨). Chromium 데스크톱 전용, 미지원 시 Whisper 폴백.
+- **Whisper(local-client) 추론은 Web Worker에서 돈다**(`src/providers/whisper-worker.ts`).
+  메인 스레드에서 돌리면 인식 중 페이지가 멈춘다 — 실측으로 3.3초 오디오 1건에 최대 1,123ms
+  프레임 갭, 총 2.6초 정지였고 긴 파일·small 모델에서는 "먹통"으로 체감된다. 워커로 옮긴 뒤
+  같은 조건에서 최대 갭 103ms(정상 프레임 편차), 150ms 초과 갭 0회다. WebGPU 경로라도
+  자기회귀 디코딩 루프가 JS에서 도는 탓이라 device와 무관하게 필요한 조치다.
+  PCM은 소유권 이전(transfer)으로 넘겨 복사 비용을 없앤다.
 - **Whisper(local-client)**: 코드/모델/WASM 런타임 전부 same-origin 자산 — 최초 1회 `npm run assets` 필요(미준비 시 안내 에러). 멀티스레드 WASM은 COOP/COEP(`credentialless`) 헤더 필요 — vite dev/preview에는 설정돼 있고, 미적용 호스팅에서는 단일 스레드로 폴백. WebGPU는 fp32 가중치(`npm run assets -- --webgpu`)가 있을 때만 시도. 한국어 기본은 `whisper-base`(tiny는 8kHz 전화 음성에서 CER 458% — 위 실측 참조). 발화 단위 인식이라 발화가 끝나고 무음 0.5s가 지난 뒤 자막이 뜬다(발화 도중 부분 결과는 없음).
 - **Streaming**: 동봉된 온프레미스 서버(`server/realtime_asr_server.py`)의 프로토콜이 기본값. 외부 클라우드 벤더에 붙이려면 `#onOpen`/`#send`/`#onMessage`를 해당 스펙에 맞춰 조정.
 - **FunASR**: 기본 모델(paraformer-zh-streaming)이 중국어 전용 — 한국어 실시간은 SenseVoice 또는 Streaming(faster-whisper)을 사용. 공식 브라우저(WASM) 런타임이 없어 실행 위치는 온프레미스만.

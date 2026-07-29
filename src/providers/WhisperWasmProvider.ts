@@ -1,6 +1,8 @@
 import { SttProvider, type ConfigField, type ProviderConfig, type RuntimeLocation, type SttInput } from '../core/SttProvider';
 import { AudioPcmTap } from '../core/AudioPcmTap';
 import { SystemEvent, Mode } from '../core/events';
+// Vite worker 빌드 — 추론을 메인 스레드 밖에서 돌린다(UI 멈춤 방지)
+import WhisperWorker from './whisper-worker.ts?worker';
 
 /** 인식 언어 코드 → transformers.js whisper 언어명 */
 const LANG_MAP: Record<string, string> = {
@@ -91,24 +93,26 @@ function collapseHallucinatedRepeats(text: string): string {
   return collapseWordRepeats(collapseCharRepeats(text)).trim();
 }
 
-/** transformers.js ASR 파이프라인의 이 코드가 쓰는 표면만 타입화. */
-type Transcriber = (
-  audio: Float32Array,
-  options: {
-    language?: string;
-    task: 'transcribe';
-    /** 인식 창 길이(초) — Whisper는 30s로 학습됨 */
-    chunk_length_s?: number;
-    /** 창 사이 겹침(초) — 경계에서 잘린 단어를 복원한다 */
-    stride_length_s?: number;
-  },
-) => Promise<{ text?: string }>;
+/** 인식 창 길이(초) — Whisper는 30s로 학습됐다 */
+const CHUNK_LENGTH_SEC = 30;
+/** 창 사이 겹침(초) — 경계에서 잘린 단어를 복원한다 */
+const STRIDE_LENGTH_SEC = 5;
+
+/** 워커 → 메인 메시지 */
+type WorkerOut =
+  | { type: 'loaded'; model: string; device: string }
+  | { type: 'result'; id: number; text: string }
+  | { type: 'error'; id?: number; message: string };
 
 /**
  * 클라이언트 로컬 Whisper Provider (WASM / WebGPU, transformers.js) — 자체 CPU/GPU로 인식.
  *
  * 파일/마이크 어느 쪽이든 엔진이 만든 MediaStream을 AudioPcmTap으로 16kHz PCM으로 받아
- * 일정 길이(chunk)마다 in-browser Whisper로 인식한다. 서버·키 불필요.
+ * 무음 경계마다 in-browser Whisper로 인식한다. 서버·키 불필요.
+ *
+ * **추론은 Web Worker에서 돌린다.** 메인 스레드에서 돌리면 UI가 멈춘다(실측: 3.3초 오디오
+ * 1건에 최대 1,123ms 프레임 갭, 총 2.6초 정지). 긴 파일·small 모델에서는 "페이지 먹통"으로
+ * 체감된다. 워커로 옮기면 인식 중에도 화면·버튼이 계속 반응한다.
  *
  * local-client 계약: 코드/모델 자산도 별도 도메인 없이 자체 출처에서 관리한다.
  *  - transformers.js : npm 의존성으로 번들에 포함 (CDN 동적 import 제거)
@@ -149,9 +153,12 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
   }
 
   #tap: AudioPcmTap | null = null;
-  #transcriber: Transcriber | null = null;
-  /** 현재 로드된 모델 식별자(moduleUrl|model) — 설정 변경 시 재로드 판단용 */
+  #worker: Worker | null = null;
+  /** 현재 로드된 모델 — 설정 변경 시 재로드 판단용 */
   #loadedKey = '';
+  /** 워커 요청 id → 대기 중인 resolver */
+  #pending = new Map<number, { resolve: (text: string) => void; reject: (err: Error) => void }>();
+  #seq = 0;
   #frames: Float32Array[] = [];
   #samples = 0;
   /** 인식은 직렬로 — 무음 경계마다 큐에 넣고 순서대로 처리한다 */
@@ -220,7 +227,7 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
     await this.#tap?.stop();
     this.#tap = null;
     // 남은 발화 마지막 인식 — 짧아도 발화가 있었으면 버리지 않는다
-    if (this.#hadSpeech && this.#transcriber) {
+    if (this.#hadSpeech && this.#loadedKey) {
       const lang = LANG_MAP[this.config.lang || ''];
       this.#enqueueFlush(lang);
     }
@@ -242,71 +249,96 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
     this.#queue = this.#queue.then(() => this.#transcribe(merged, lang)).catch(() => {});
   }
 
+  /** 워커를 띄우고 메시지 라우팅을 건다(1회). */
+  #ensureWorker(): Worker {
+    if (this.#worker) return this.#worker;
+    const worker = new WhisperWorker();
+    worker.onmessage = (event: MessageEvent<WorkerOut>) => {
+      const msg = event.data;
+      if (msg.type === 'result') {
+        this.#pending.get(msg.id)?.resolve(msg.text);
+        this.#pending.delete(msg.id);
+        return;
+      }
+      if (msg.type === 'error') {
+        const err = new Error(msg.message);
+        if (msg.id !== undefined && this.#pending.has(msg.id)) {
+          this.#pending.get(msg.id)?.reject(err);
+          this.#pending.delete(msg.id);
+        } else {
+          this._sink?.error(err);
+        }
+      }
+    };
+    worker.onerror = (e) => this._sink?.error(new Error(`Whisper 워커 오류: ${e.message}`));
+    this.#worker = worker;
+    return worker;
+  }
+
   async #ensureModel(): Promise<void> {
     const model = this.config.modelId || 'Xenova/whisper-base';
     // 같은 모델이 이미 로드돼 있으면 재사용, 설정이 바뀌었으면 재로드
-    if (this.#transcriber && this.#loadedKey === model) return;
-    this.#transcriber = null;
+    if (this.#loadedKey === model && this.#worker) return;
+    const worker = this.#ensureWorker();
+    this.#loadedKey = '';
     this._sink?.system(SystemEvent.MODEL_LOADING, { model });
-    // 번들된 모듈을 최초 사용 시점에 지연 로드(코드 스플릿) — 외부 CDN 아님
-    const { pipeline, env } = await import('@huggingface/transformers');
-    // local-client 계약: 모델/런타임 자산 전부 same-origin에서만 가져온다 (외부 도메인 차단)
-    env.allowRemoteModels = false;
-    env.allowLocalModels = true;
-    env.localModelPath = '/models/';
-    // WASM 런타임도 same-origin — dev는 vite가 패키지 dist(매칭 버전 동봉)를 직접 서빙하고
-    // (public의 .mjs는 모듈 import 불가), 빌드본은 npm run assets가 복사한 /ort/ 정적 파일 사용
-    if (env.backends.onnx.wasm) {
-      env.backends.onnx.wasm.wasmPaths = import.meta.env.DEV ? '/node_modules/@huggingface/transformers/dist/' : '/ort/';
-      // COOP/COEP 미적용 호스팅이면 SharedArrayBuffer가 없어 멀티스레드 초기화가 멈춘다 → 단일 스레드 폴백
-      if (!crossOriginIsolated) env.backends.onnx.wasm.numThreads = 1;
-    }
-    // 정적 서버는 없는 파일에 index.html(200)을 돌려줄 수 있어(SPA 폴백) ONNX 파싱/세션이
-    // 조용히 죽는다 → 자산 실존을 선확인하고, 가능한 경로만 시도한다
-    if (!(await assetExists(`/models/${model}/onnx/encoder_model_quantized.onnx`))) {
-      throw new Error(`모델 자산(/models/${model})이 없습니다`);
-    }
-    const load = (options?: { device?: 'webgpu' }): Promise<Transcriber> =>
-      pipeline('automatic-speech-recognition', model, options) as unknown as Promise<Transcriber>;
-    const tryWebgpu = 'gpu' in navigator && (await assetExists(`/models/${model}/onnx/encoder_model.onnx`));
-    try {
-      this.#transcriber = tryWebgpu ? await load({ device: 'webgpu' }) : await load();
-    } catch {
-      // WebGPU 세션 생성 실패 시 WASM(q8)로 폴백
-      this.#transcriber = await load();
-    }
-    this.#loadedKey = model;
-    this._sink?.system(SystemEvent.MODEL_READY, { model });
+
+    await new Promise<void>((resolve, reject) => {
+      const onMessage = (event: MessageEvent<WorkerOut>): void => {
+        const msg = event.data;
+        if (msg.type === 'loaded' && msg.model === model) {
+          worker.removeEventListener('message', onMessage);
+          this.#loadedKey = model;
+          this._sink?.system(SystemEvent.MODEL_READY, { model, device: msg.device });
+          resolve();
+        } else if (msg.type === 'error' && msg.id === undefined) {
+          worker.removeEventListener('message', onMessage);
+          reject(new Error(msg.message));
+        }
+      };
+      worker.addEventListener('message', onMessage);
+      worker.postMessage({ type: 'load', model });
+    });
   }
 
-  /** 한 발화(무음 경계로 잘린 구간)를 인식해 final emit. */
+  /** 한 발화(무음 경계로 잘린 구간)를 워커에 보내 인식하고 final emit. */
   async #transcribe(pcm: Float32Array, lang: string | undefined): Promise<void> {
-    if (!this.#transcriber) return;
+    const worker = this.#worker;
+    if (!worker || !this.#loadedKey) return;
     this._sink?.partial('…인식 중');
+    const id = ++this.#seq;
     try {
-      const out = await this.#transcriber(pcm, {
-        language: lang,
-        task: 'transcribe',
-        // 발화가 maxChunkSec(기본 20s)로 강제 확정될 때를 위한 안전장치 —
-        // Whisper 인식 창은 30s이고, 초과분은 5s 겹쳐 청킹해 경계 손실을 줄인다.
-        chunk_length_s: 30,
-        stride_length_s: 5,
+      const text = await new Promise<string>((resolve, reject) => {
+        this.#pending.set(id, { resolve, reject });
+        // PCM 버퍼는 소유권을 넘겨 복사 비용을 없앤다(전송 후 이 쪽 pcm은 비워진다)
+        worker.postMessage(
+          {
+            type: 'transcribe',
+            id,
+            pcm,
+            language: lang,
+            // 발화가 maxChunkSec(기본 20s)로 강제 확정될 때를 위한 안전장치 —
+            // 인식 창 30s를 넘는 분량은 5s 겹쳐 청킹해 경계 손실을 줄인다.
+            chunkLengthSec: CHUNK_LENGTH_SEC,
+            strideLengthSec: STRIDE_LENGTH_SEC,
+          },
+          [pcm.buffer],
+        );
       });
-      const text = collapseHallucinatedRepeats(out?.text ?? '');
-      if (text) this._sink?.final(text);
+      const cleaned = collapseHallucinatedRepeats(text);
+      if (cleaned) this._sink?.final(cleaned);
     } catch (err) {
+      this.#pending.delete(id);
       this._sink?.error(err instanceof Error ? err : new Error(String(err)));
     }
   }
-}
 
-/** same-origin 자산 실존 확인 — SPA 폴백(index.html 200)을 자산으로 오인하지 않도록 HEAD로 검사. */
-async function assetExists(url: string): Promise<boolean> {
-  try {
-    const res = await fetch(url, { method: 'HEAD' });
-    return res.ok && !(res.headers.get('content-type') ?? '').includes('text/html');
-  } catch {
-    return false;
+  override async dispose(): Promise<void> {
+    await super.dispose();
+    this.#worker?.terminate();
+    this.#worker = null;
+    this.#loadedKey = '';
+    this.#pending.clear();
   }
 }
 
