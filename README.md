@@ -39,6 +39,7 @@ npm run qa:stt       # 전 기능 자동 순회 → 결과지 작성 → 기준�
 npm run qa:gate      # 측정 없이 최신 결과지만 재판정
 npm run qa:gate -- --promote   # 최신 결과지를 기준선으로 승격(재측정 없이) — 의도된 변화 반영용
 npm run qa:hooks     # pre-push 게이트 활성화(git config core.hooksPath .githooks) — 최초 1회
+npm run qa:mic -- whisper local-client   # 마이크 경로 수동 검증(아래 "가짜 마이크의 사각지대")
 ```
 
 - 기준 데이터: AI Hub 「상황별음성 상담 음성」(8kHz 전화). 경로는 `STT_QA_DATASET`으로 지정,
@@ -78,9 +79,13 @@ stt-e2e/.local/                   원문 상세·브라우저 프로필·이벤�
   빼뒀지만 그 근거("외부 서비스가 거부한다")가 오진이었다. 진짜 원인은 ko-KR SODA 언어팩이었고,
   러너에서 `--disable-component-update`로 팩 유입을 막은 뒤 8.7%로 결정론적으로 측정된다.
   → **`gateOptional`은 원인을 못 찾았을 때의 도피처가 아니다.** 붙이기 전에 CLAUDE.md의
-  "외부 서비스 탓으로 결론내기 전" 판정 순서를 따른다. 지금 남은 것은 두 개뿐이다:
-  `qwen3-file`(자격 미설정이면 측정 자체가 불가)과 `webspeech-local-file`(언어팩 설치 상태에 따라
-  온디바이스인지 온라인 폴백인지가 바뀌어, 무엇을 재는지가 환경에 좌우된다).
+  "외부 서비스 탓으로 결론내기 전" 판정 순서를 따른다. 지금 남은 것은 세 개이고 모두 근거가 실재한다:
+  - `qwen3-file` — 자격 미설정이면 측정 자체가 불가
+  - `webspeech-local-file` — 언어팩 설치 상태에 따라 온디바이스인지 온라인 폴백인지가 바뀐다
+  - `webspeech-mic` — **측정 대상이 마이크 경로가 아니다.** 가짜 마이크가 `<audio>` captureStream
+    트랙을 주므로 WebSpeech에서는 파일 트랙 경로를 다시 탄다. 마이크 트랙을 `start(track)`에
+    넘겨 결과가 오지 않던 결함이 이 측정을 5.0%로 통과했고, 그 결함을 고치자 이 측정이 100%로
+    뒤집혔다 — 올바른 코드를 막고 결함을 통과시키는 관계라 게이트 조건이 될 수 없다.
 - 기준선 갱신은 `--update-baseline`으로만. 자동 승격하면 한 번 통과한 회귀가 새 기준이 된다
 - `pre-push` 훅은 **측정을 다시 돌리지 않고**(quick도 20분대) 최신 결과지를 검사한다:
   판정이 PASS인지 + 그 결과지가 **지금 푸시하는 소스로** 측정된 것인지(감시 경로 해시 일치) +
@@ -104,6 +109,17 @@ stt-e2e/.local/                   원문 상세·브라우저 프로필·이벤�
 ### QA로 검증되지 않는 것
 
 - 물리 마이크·에코·주변 잡음(가짜 마이크라서)
+- **가짜 마이크의 사각지대** — 하네스는 `getUserMedia`를 JS로 오버라이드해 `<audio>`의
+  `captureStream()` 트랙을 돌려준다. 그래서 **트랙을 인식 API에 그대로 넘기는 Provider는
+  마이크 모드에서 사실상 파일 트랙 경로를 다시 테스트한다.** 실제로 WebSpeech에서 마이크 트랙만
+  실패하는 결함이 이 측정을 CER 5.0%로 통과했다(사용자 보고로 발견).
+  → `npm run qa:mic`은 Chrome 플래그(`--use-file-for-fake-audio-capture`)로 **진짜 장치 트랙**에
+  음성을 흘려 이 구멍을 메운다. 단 **WebSpeech는 이 도구로도 검증되지 않는다** — 가짜 파일 캡처가
+  SpeechRecognition의 오디오 스택에 닿지 않는다(실측: 같은 환경에서 마이크 트랙·`start()`·
+  AudioContext 경유 모두 0건인데 `<audio>` captureStream 트랙은 149건 인식). **WebSpeech 마이크는
+  사람이 물리 마이크로 확인해야 한다.**
+  ⚠ `--use-fake-device-for-media-stream`을 파일 플래그와 **같이 주면 안 된다** — 톤 생성기가
+  파일을 덮는다(실측: 같이 주면 rms 0.0000, 파일 플래그 단독이면 0.11).
 - WebSpeech는 클라우드 인식이라 실행마다 흔들린다 → 허용 오차 7%p(관측: 7.8~8.7%)
 - FunASR은 한국어를 못 하는 게 정상이다(중국어 전용 모델) → 절대 CER이 아니라 변화만 의미 있다
 - 마이크 모드는 `RECOGNITION_STARTED`(캡처 준비 완료) 뒤에 재생을 시작해 앞부분 손실을 없앴다.

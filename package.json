@@ -18,6 +18,7 @@
     "qa:samples": "node scripts/qa/select-samples.mjs",
     "qa:stt": "node scripts/qa/run.mjs",
     "qa:gate": "node scripts/qa/gate.mjs",
+    "qa:mic": "node scripts/qa/verify-mic.mjs",
     "qa:hooks": "git config core.hooksPath .githooks"
   },
   "type": "module",

@@ -46,7 +46,8 @@ function describeError(code: string, hadTrack: boolean): string {
  * 스피커→마이크 음향 루프백이 필요 없고, 주변 소음/스피커 볼륨과 완전 무관하다.
  * 스펙상 audioTrack 경로는 마이크 권한을 요구하지 않는다(requestMicrophonePermission=false).
  *
- *   - mic  : 엔진이 준 마이크 트랙으로 start(track) (없으면 기본 마이크 start())
+ *   - mic  : `start()` — 브라우저가 입력 장치를 직접 연다. **마이크 트랙을 넘기지 않는다**:
+ *            실제 마이크 트랙을 start(track)에 주면 세션만 열리고 결과가 오지 않는다(에러도 없음).
  *   - file : 엔진이 captureStream으로 캡처한 파일 오디오 트랙으로 start(track)  ← 노이즈/볼륨 무관
  *
  * Chromium 데스크톱(Chrome/Edge, ~M133+) 전용. 미지원 환경은 파일 모드에서 안내 후 폴백 권장.
@@ -215,12 +216,25 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
     rec.processLocally = this.#offline;
 
     this.#rec = rec;
-    this.#track = canTrack ? track : null;
+    /**
+     * **트랙 입력은 파일 모드에서만 쓴다.**
+     *
+     * 파일은 재생 트랙을 디지털로 넣어야 하니 `start(track)`이 필요하지만, 마이크는 브라우저가
+     * 직접 열게 하는 것이 원래 경로다. 실제 마이크 트랙(getUserMedia)을 `start(track)`에 넘기면
+     * 세션은 열리는데 결과가 오지 않고 **에러도 없다**(조용한 실패). 사용자 보고로 발견했다 —
+     * 마이크 모드만 클라우드·온디바이스 양쪽에서 안 되고 파일 모드는 정상이었다.
+     *
+     * QA가 이걸 놓친 이유: 하네스의 마이크 모드는 `<audio>`의 captureStream 트랙을 주입하는
+     * 가짜 마이크라(`src/qa/harness.ts`) 실제로는 **파일 트랙 경로를 다시 테스트**하고 있었다.
+     * 그래서 이 줄을 고치면 `webspeech-mic` 측정이 오히려 100%로 뒤집힌다 — 그 측정은 실제
+     * 마이크 경로를 대변하지 못한다(features.mjs에서 게이트 제외한 근거).
+     * **이 분기는 사람이 물리 마이크로 확인해야 한다** — 이 수정도 그렇게 검증했다.
+     */
+    this.#track = isFile && canTrack ? track : null;
     this._active = true;
 
-    // 트랙이 있고 지원되면 트랙 입력, 아니면(마이크) 기본 start()
     if (this.#track) rec.start(this.#track);
-    else rec.start();
+    else rec.start(); // 마이크 — 브라우저가 입력 장치를 직접 연다
   }
 
   /**

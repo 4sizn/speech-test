@@ -7,6 +7,13 @@
  *  - 마이크 모드: `getUserMedia`를 오버라이드해 샘플을 재생한 `captureStream()`을 돌려준다.
  *                실제 물리 마이크가 아니라 파일 주입 가짜 마이크다(결과지에 명시된다).
  *
+ * ⚠ **가짜 마이크의 사각지대**: 돌려주는 트랙이 `<audio>`의 captureStream 트랙이므로, Provider가
+ *   트랙을 어떻게 다루는지에 따라 **마이크 모드가 파일 트랙 경로를 다시 테스트할 수 있다.**
+ *   실제로 WebSpeech에서 그 일이 있었다 — 실제 마이크 트랙을 `start(track)`에 넘기면 결과가
+ *   오지 않는(에러도 없는) 결함이 있었는데, 여기서는 파일 트랙이 들어와 정상 통과했다(CER 5.0%).
+ *   getUserMedia 스트림 자체를 소비하는 Provider(Whisper·Streaming의 `AudioPcmTap`)는 이 주입으로
+ *   충분하지만, **트랙을 인식 API에 직접 넘기는 경로는 사람이 물리 마이크로 확인해야 한다.**
+ *
  * CER 채택 규칙은 앱의 DatasetPanel(reportCer)과 동일하게 맞춘다 — 중지 후 유예 수집 +
  * 개별 final과 전체 join 중 최소 CER. WebSpeech는 final이 중지 뒤에 도착하고 재시작 루프가
  * 중복 final을 내므로, 이 규칙이 없으면 부당하게 나쁘게 측정된다.
