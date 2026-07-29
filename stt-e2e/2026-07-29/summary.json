@@ -1,8 +1,8 @@
 {
   "stamp": "2026-07-29",
   "env": {
-    "at": "2026-07-28T17:54:40.050Z",
-    "commit": "5ed7999",
+    "at": "2026-07-29T01:47:57.302Z",
+    "commit": "26a7e34",
     "dirty": true,
     "profile": "quick",
     "snapshot": {
@@ -33,131 +33,152 @@
       "src/providers/Qwen3Provider.ts": "114f77b8891d",
       "src/providers/SenseVoiceProvider.ts": "6864951abd6b",
       "src/providers/StreamingAsrProvider.ts": "256f600ea4ef",
-      "src/providers/WebSpeechProvider.ts": "5cc14b3b4dd5",
-      "src/providers/WhisperWasmProvider.ts": "400252420c19",
+      "src/providers/WebSpeechProvider.ts": "ad694df3ba92",
+      "src/providers/WhisperWasmProvider.ts": "c7d82639c37a",
       "src/providers/registerAll.ts": "13cdda90c916",
-      "src/qa/harness.ts": "b763c5cc0259",
+      "src/qa/harness.ts": "07820cc91d4d",
       "vite.config.ts": "32419d7ae4c0"
     },
+    "planFeatures": [
+      "whisper-base-file",
+      "whisper-base-mic",
+      "streaming-file",
+      "streaming-mic",
+      "sensevoice-file",
+      "sensevoice-mic",
+      "funasr-file",
+      "webspeech-file",
+      "webspeech-mic",
+      "qwen3-file"
+    ],
     "envLine": ":8765 started · :8766 started · :8767 started · 샘플 7"
   },
   "rows": [
     {
       "feature": "whisper-base-file",
       "samples": 7,
-      "cerAvg": 0.2915,
-      "cerMedian": 0.2778,
-      "cerWorst": 0.5789,
-      "msAvg": 11562,
+      "cerAvg": 0.2745,
+      "cerMedian": 0.1677,
+      "cerWorst": 0.5833,
+      "msAvg": 11398,
       "skipped": null,
       "note": null,
-      "tolerance": 0.02,
-      "runsInDoc": 4,
-      "prev": 0.3005
+      "tolerance": 0.03,
+      "gateOptional": false,
+      "runsInDoc": 8,
+      "prev": 0.3086
     },
     {
       "feature": "whisper-base-mic",
       "samples": 6,
-      "cerAvg": 0.2877,
+      "cerAvg": 0.254,
       "cerMedian": 0.1977,
       "cerWorst": 0.5789,
-      "msAvg": 6847,
+      "msAvg": 6920,
       "skipped": null,
       "note": null,
-      "tolerance": 0.02,
-      "runsInDoc": 4,
-      "prev": 0.283
+      "tolerance": 0.05,
+      "gateOptional": false,
+      "runsInDoc": 9,
+      "prev": 0.254
     },
     {
       "feature": "streaming-file",
       "samples": 7,
-      "cerAvg": 0.2968,
+      "cerAvg": 0.3198,
       "cerMedian": 0.2778,
-      "cerWorst": 0.5833,
-      "msAvg": 11596,
+      "cerWorst": 0.6316,
+      "msAvg": 11028,
       "skipped": null,
       "note": null,
-      "tolerance": 0.02,
-      "runsInDoc": 4,
-      "prev": 0.3539
+      "tolerance": 0.05,
+      "gateOptional": false,
+      "runsInDoc": 8,
+      "prev": 0.2991
     },
     {
       "feature": "streaming-mic",
       "samples": 6,
-      "cerAvg": 0.291,
+      "cerAvg": 0.2864,
       "cerMedian": 0.1977,
       "cerWorst": 0.6316,
-      "msAvg": 6093,
+      "msAvg": 6011,
       "skipped": null,
       "note": null,
-      "tolerance": 0.02,
-      "runsInDoc": 4,
-      "prev": 0.3112
+      "tolerance": 0.05,
+      "gateOptional": false,
+      "runsInDoc": 9,
+      "prev": 0.2364
     },
     {
       "feature": "sensevoice-file",
       "samples": 7,
-      "cerAvg": 0.1513,
-      "cerMedian": 0.1053,
-      "cerWorst": 0.3952,
-      "msAvg": 10967,
+      "cerAvg": 0.1608,
+      "cerMedian": 0.1389,
+      "cerWorst": 0.3593,
+      "msAvg": 11167,
       "skipped": null,
       "note": null,
-      "tolerance": 0.02,
-      "runsInDoc": 4,
-      "prev": 0.1689
+      "tolerance": 0.05,
+      "gateOptional": false,
+      "runsInDoc": 8,
+      "prev": 0.1735
     },
     {
       "feature": "sensevoice-mic",
       "samples": 6,
-      "cerAvg": 0.1369,
-      "cerMedian": 0.1579,
+      "cerAvg": 0.1087,
+      "cerMedian": 0.1316,
       "cerWorst": 0.2222,
-      "msAvg": 6510,
+      "msAvg": 6613,
       "skipped": null,
       "note": null,
-      "tolerance": 0.02,
-      "runsInDoc": 4,
-      "prev": 0.1009
+      "tolerance": 0.05,
+      "gateOptional": false,
+      "runsInDoc": 9,
+      "prev": 0.104
     },
     {
       "feature": "funasr-file",
       "samples": 7,
-      "cerAvg": 0.9957,
+      "cerAvg": 0.9949,
       "cerMedian": 1,
       "cerWorst": 1,
-      "msAvg": 10832,
+      "msAvg": 10739,
       "skipped": null,
       "note": "중국어 전용 모델 — 절대 CER 무의미, 회귀 감지용",
-      "tolerance": 0.02,
-      "runsInDoc": 4,
-      "prev": 0.9957
+      "tolerance": 0.05,
+      "gateOptional": false,
+      "runsInDoc": 8,
+      "prev": 0.9949
     },
     {
       "feature": "webspeech-file",
       "samples": 6,
-      "cerAvg": 0.0869,
-      "cerMedian": 0.079,
-      "cerWorst": 0.2222,
-      "msAvg": 5597,
+      "cerAvg": 1,
+      "cerMedian": 1,
+      "cerWorst": 1,
+      "msAvg": 6333,
       "skipped": null,
       "note": "클라우드 인식 — 실행마다 흔들린다",
-      "tolerance": 0.05,
-      "runsInDoc": 4,
-      "prev": 0.0499
+      "tolerance": 0.07,
+      "gateOptional": true,
+      "runsInDoc": 9,
+      "prev": 1
     },
     {
       "feature": "webspeech-mic",
       "samples": 6,
-      "cerAvg": 0.0499,
-      "cerMedian": 0.0152,
-      "cerWorst": 0.1579,
-      "msAvg": 5603,
+      "cerAvg": 1,
+      "cerMedian": 1,
+      "cerWorst": 1,
+      "msAvg": 5985,
       "skipped": null,
       "note": "클라우드 인식 · 파일 주입 가짜 마이크",
-      "tolerance": 0.05,
-      "runsInDoc": 4,
-      "prev": 0.0499
+      "tolerance": 0.07,
+      "gateOptional": true,
+      "runsInDoc": 8,
+      "prev": 1
     },
     {
       "feature": "qwen3-file",
@@ -169,7 +190,8 @@
       "skipped": "Qwen3 미설정 — 설정 패널에서 endpoint / apiKey 입력 필요",
       "note": "자격 미설정이면 SKIP",
       "tolerance": 0.05,
-      "runsInDoc": 4,
+      "gateOptional": true,
+      "runsInDoc": 8,
       "prev": null
     }
   ],
@@ -177,74 +199,74 @@
     {
       "feature": "whisper-base-file",
       "verdict": "PASS",
-      "baseline": 0.2915,
-      "cerAvg": 0.2915,
+      "baseline": 0.2745,
+      "cerAvg": 0.2745,
       "delta": 0,
-      "reason": "+0.0%p / 허용 2%p"
+      "reason": "+0.0%p / 허용 3%p"
     },
     {
       "feature": "whisper-base-mic",
       "verdict": "PASS",
-      "baseline": 0.2877,
-      "cerAvg": 0.2877,
+      "baseline": 0.254,
+      "cerAvg": 0.254,
       "delta": 0,
-      "reason": "+0.0%p / 허용 2%p"
+      "reason": "+0.0%p / 허용 5%p"
     },
     {
       "feature": "streaming-file",
       "verdict": "PASS",
-      "baseline": 0.2968,
-      "cerAvg": 0.2968,
+      "baseline": 0.3198,
+      "cerAvg": 0.3198,
       "delta": 0,
-      "reason": "+0.0%p / 허용 2%p"
+      "reason": "+0.0%p / 허용 5%p"
     },
     {
       "feature": "streaming-mic",
       "verdict": "PASS",
-      "baseline": 0.291,
-      "cerAvg": 0.291,
+      "baseline": 0.2864,
+      "cerAvg": 0.2864,
       "delta": 0,
-      "reason": "+0.0%p / 허용 2%p"
+      "reason": "+0.0%p / 허용 5%p"
     },
     {
       "feature": "sensevoice-file",
       "verdict": "PASS",
-      "baseline": 0.1513,
-      "cerAvg": 0.1513,
+      "baseline": 0.1608,
+      "cerAvg": 0.1608,
       "delta": 0,
-      "reason": "+0.0%p / 허용 2%p"
+      "reason": "+0.0%p / 허용 5%p"
     },
     {
       "feature": "sensevoice-mic",
       "verdict": "PASS",
-      "baseline": 0.1369,
-      "cerAvg": 0.1369,
+      "baseline": 0.1087,
+      "cerAvg": 0.1087,
       "delta": 0,
-      "reason": "+0.0%p / 허용 2%p"
+      "reason": "+0.0%p / 허용 5%p"
     },
     {
       "feature": "funasr-file",
       "verdict": "PASS",
-      "baseline": 0.9957,
-      "cerAvg": 0.9957,
+      "baseline": 0.9949,
+      "cerAvg": 0.9949,
       "delta": 0,
-      "reason": "+0.0%p / 허용 2%p"
+      "reason": "+0.0%p / 허용 5%p"
     },
     {
       "feature": "webspeech-file",
-      "verdict": "PASS",
+      "verdict": "WARN",
       "baseline": 0.0869,
-      "cerAvg": 0.0869,
-      "delta": 0,
-      "reason": "+0.0%p / 허용 5%p"
+      "cerAvg": 1,
+      "delta": 0.9131,
+      "reason": "+91.3%p / 허용 7%p"
     },
     {
       "feature": "webspeech-mic",
-      "verdict": "PASS",
+      "verdict": "WARN",
       "baseline": 0.0499,
-      "cerAvg": 0.0499,
-      "delta": 0,
-      "reason": "+0.0%p / 허용 5%p"
+      "cerAvg": 1,
+      "delta": 0.9501,
+      "reason": "+95.0%p / 허용 7%p"
     },
     {
       "feature": "qwen3-file",

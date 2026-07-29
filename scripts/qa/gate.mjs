@@ -35,12 +35,16 @@ if (promote) {
   const measured = (doc.rows ?? []).filter((r) => !r.skipped && r.cerAvg != null);
   if (!measured.length) fail('승격할 측정값이 없습니다');
   updateBaseline(measured, doc.env ?? { at: new Date().toISOString() });
-  console.log(`기준선 승격 완료 — ${measured.length}개 기능 (stt-e2e/baseline.json)`);
-  for (const r of measured) console.log(`  ${r.feature.padEnd(22)} ${(r.cerAvg * 100).toFixed(1)}%`);
+  const promoted = measured.filter((r) => !r.gateOptional);
+  console.log(`기준선 승격 완료 — ${promoted.length}개 기능 (stt-e2e/baseline.json)`);
+  for (const r of promoted) console.log(`  ${r.feature.padEnd(22)} ${(r.cerAvg * 100).toFixed(1)}%`);
+  for (const r of measured.filter((r) => r.gateOptional)) {
+    console.log(`  ${r.feature.padEnd(22)} ${(r.cerAvg * 100).toFixed(1)}%  ← 승격 제외(gateOptional · 외부 서비스 의존)`);
+  }
 
   // 결과지의 판정도 새 기준선으로 다시 계산해 저장한다 — 승격한 결과지는 정의상 PASS이고,
   // 측정 당시 판정을 그대로 두면 게이트가 계속 옛 판정을 읽어 FAIL로 막는다.
-  const rejudged = judge(doc.rows ?? [], loadBaseline());
+  const rejudged = judge(doc.rows ?? [], loadBaseline(), doc.env?.planFeatures);
   writeSummary({
     dir: dirname(path),
     stamp,

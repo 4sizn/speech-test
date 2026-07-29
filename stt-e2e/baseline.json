@@ -1,53 +1,53 @@
 {
   "features": {
     "whisper-base-file": {
-      "cerAvg": 0.2915,
-      "cerMedian": 0.2778,
+      "cerAvg": 0.2745,
+      "cerMedian": 0.1677,
       "samples": 7,
-      "tolerance": 0.02,
-      "at": "2026-07-28T17:54:40.050Z"
+      "tolerance": 0.03,
+      "at": "2026-07-29T01:47:57.302Z"
     },
     "whisper-base-mic": {
-      "cerAvg": 0.2877,
+      "cerAvg": 0.254,
       "cerMedian": 0.1977,
       "samples": 6,
-      "tolerance": 0.02,
-      "at": "2026-07-28T17:54:40.050Z"
+      "tolerance": 0.05,
+      "at": "2026-07-29T01:47:57.302Z"
     },
     "streaming-file": {
-      "cerAvg": 0.2968,
+      "cerAvg": 0.3198,
       "cerMedian": 0.2778,
       "samples": 7,
-      "tolerance": 0.02,
-      "at": "2026-07-28T17:54:40.050Z"
+      "tolerance": 0.05,
+      "at": "2026-07-29T01:47:57.302Z"
     },
     "streaming-mic": {
-      "cerAvg": 0.291,
+      "cerAvg": 0.2864,
       "cerMedian": 0.1977,
       "samples": 6,
-      "tolerance": 0.02,
-      "at": "2026-07-28T17:54:40.050Z"
+      "tolerance": 0.05,
+      "at": "2026-07-29T01:47:57.302Z"
     },
     "sensevoice-file": {
-      "cerAvg": 0.1513,
-      "cerMedian": 0.1053,
+      "cerAvg": 0.1608,
+      "cerMedian": 0.1389,
       "samples": 7,
-      "tolerance": 0.02,
-      "at": "2026-07-28T17:54:40.050Z"
+      "tolerance": 0.05,
+      "at": "2026-07-29T01:47:57.302Z"
     },
     "sensevoice-mic": {
-      "cerAvg": 0.1369,
-      "cerMedian": 0.1579,
+      "cerAvg": 0.1087,
+      "cerMedian": 0.1316,
       "samples": 6,
-      "tolerance": 0.02,
-      "at": "2026-07-28T17:54:40.050Z"
+      "tolerance": 0.05,
+      "at": "2026-07-29T01:47:57.302Z"
     },
     "funasr-file": {
-      "cerAvg": 0.9957,
+      "cerAvg": 0.9949,
       "cerMedian": 1,
       "samples": 7,
-      "tolerance": 0.02,
-      "at": "2026-07-28T17:54:40.050Z"
+      "tolerance": 0.05,
+      "at": "2026-07-29T01:47:57.302Z"
     },
     "webspeech-file": {
       "cerAvg": 0.0869,
@@ -64,7 +64,7 @@
       "at": "2026-07-28T17:54:40.050Z"
     }
   },
-  "updatedAt": "2026-07-28T17:54:40.050Z",
-  "commit": "5ed7999",
+  "updatedAt": "2026-07-29T01:47:57.302Z",
+  "commit": "26a7e34",
   "note": "기능별 기준 오류값 — npm run qa:stt -- --update-baseline 으로만 갱신"
 }

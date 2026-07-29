@@ -189,6 +189,9 @@ log(`  QA 서버 :${qa.port} · 샘플 ${qa.sampleCount}개 · 이벤트 ${qa.ev
 
 // ── 5) 브라우저 ────────────────────────────────────────────────────────
 const at = new Date().toISOString();
+// 감시 경로 해시는 **측정 시작 전에** 찍는다. 결과지 작성 시점(러너 종료)에 찍으면,
+// 측정 중 소스를 고쳤을 때 실제 측정 대상과 다른 해시가 기록되어 게이트가 무력해진다.
+const hashesAtStart = sourceHashes();
 let commit = 'unknown';
 let dirty = false;
 try {
@@ -258,7 +261,8 @@ try {
       samples: qa.sampleCount,
       fakeMic: true,
     },
-    sourceHashes: sourceHashes(),
+    sourceHashes: hashesAtStart,
+    planFeatures: plan.map((f) => f.feature),
     envLine: `${Object.entries(serverStatus).map(([p, s]) => `:${p} ${s}`).join(' · ') || '온프레미스 미사용'} · 샘플 ${qa.sampleCount}`,
   };
 
@@ -268,7 +272,7 @@ try {
   }
 
   const report = writeReport({ eventsPath: qa.eventsPath, env, plan });
-  const { verdicts, overall } = judge(report.rows);
+  const { verdicts, overall } = judge(report.rows, undefined, env.planFeatures);
   const md = writeSummary({ ...report, verdicts, env, overall });
   log('\n' + md);
   log(`결과지: ${report.dir.replace(PROJECT_ROOT + '/', '')}/summary.md`);

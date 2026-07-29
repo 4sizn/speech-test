@@ -72,15 +72,24 @@ export function loadBaseline() {
  * @param {Array} rows writeReport가 만든 행
  * @param {object} baseline
  */
-export function judge(rows, baseline = loadBaseline()) {
+/**
+ * @param {Array} rows            결과지 행
+ * @param {object} baseline
+ * @param {string[]} [planFeatures] 이번 실행이 다루기로 한 기능 목록.
+ *   주면 누락 판정을 이 범위로 제한한다 — full 프로파일 기준선(tiny/small 포함)을 둔 채
+ *   quick으로 돌리면 "빠진 기능"으로 매번 FAIL이 나기 때문. 없으면 기준선 전체를 본다.
+ */
+export function judge(rows, baseline = loadBaseline(), planFeatures) {
   const verdicts = [];
 
   // 기준선에 있는데 이번 결과지에 아예 없는 기능 → MISSING(FAIL).
   // --features로 일부만 측정한 결과지가 최신이 되면 나머지가 판정에서 빠져
   // 회귀를 품은 채 통과할 수 있다. 그 구멍을 막는다.
   const measuredNames = new Set(rows.map((r) => r.feature));
+  const inScope = planFeatures?.length ? new Set(planFeatures) : null;
   for (const name of Object.keys(baseline.features ?? {})) {
     if (measuredNames.has(name)) continue;
+    if (inScope && !inScope.has(name)) continue; // 이번 프로파일 범위 밖
     verdicts.push({
       feature: name,
       verdict: 'FAIL',
@@ -98,7 +107,7 @@ export function judge(rows, baseline = loadBaseline()) {
     if (r.skipped) {
       verdicts.push({
         feature: r.feature,
-        verdict: baseCer == null ? 'SKIP' : 'FAIL',
+        verdict: baseCer == null || r.gateOptional ? 'SKIP' : 'FAIL',
         baseline: baseCer,
         cerAvg: null,
         reason: baseCer == null ? r.skipped : `기준선이 있는데 측정 안 됨: ${r.skipped}`,
@@ -111,9 +120,10 @@ export function judge(rows, baseline = loadBaseline()) {
     }
     const delta = r.cerAvg - baseCer;
     const pass = delta <= tol + 1e-9;
+    // gateOptional 기능은 초과해도 WARN — 외부 서비스 상태를 커밋 통과 조건으로 삼지 않는다
     verdicts.push({
       feature: r.feature,
-      verdict: pass ? 'PASS' : 'FAIL',
+      verdict: pass ? 'PASS' : r.gateOptional ? 'WARN' : 'FAIL',
       baseline: baseCer,
       cerAvg: r.cerAvg,
       delta: +delta.toFixed(4),
@@ -143,6 +153,9 @@ export function updateBaseline(rows, env) {
   baseline.features = baseline.features ?? {};
   for (const r of rows) {
     if (r.skipped || r.cerAvg == null) continue;
+    // 외부 서비스에 좌우되는 기능은 승격하지 않는다 — 서비스 이상 시점의 값(예: CER 100%)이
+    // 기준선이 되면 이후 어떤 결과도 통과해 게이트가 무력해진다
+    if (r.gateOptional) continue;
     baseline.features[r.feature] = {
       cerAvg: r.cerAvg,
       cerMedian: r.cerMedian,

@@ -92,13 +92,18 @@ interface FakeMic {
 }
 let fakeMic: FakeMic | null = null;
 
-/** 엔진이 마이크를 요청하면 준비된 샘플 재생 트랙을 돌려준다(재생도 이때 시작). */
+/**
+ * 엔진이 마이크를 요청하면 준비된 샘플 재생 트랙을 돌려준다 — **재생은 시작하지 않는다.**
+ *
+ * 여기서 바로 play()하면, 엔진이 AudioPcmTap(AudioWorklet 로드)을 붙이는 사이 오디오가 흘러
+ * 발화 앞부분이 잘린다. 시스템 부하가 크면 손실이 커져 CER이 13%p까지 튀었다(실측:
+ * streaming-mic 29% → 42%, "네, 우리 아이 학습지…"가 "우리 아이콥스…"로).
+ * 그래서 재생은 캡처 준비가 끝난 뒤(RECOGNITION_STARTED) 하네스가 시작한다.
+ */
 function installFakeMic(): void {
   const md = navigator.mediaDevices;
   md.getUserMedia = async () => {
     if (!fakeMic) throw new Error('가짜 마이크가 준비되지 않았습니다');
-    // 트랙이 'live' 상태여야 SpeechRecognition.start(track)이 받는다
-    await fakeMic.audio.play();
     return fakeMic.stream;
   };
 }
@@ -207,8 +212,19 @@ async function runSample(f: Feature, s: Sample): Promise<void> {
     if (f.mode === Mode.MIC) {
       const audio = await prepareFakeMic(file);
       const ended = new Promise<void>((resolve) => audio.addEventListener('ended', () => resolve(), { once: true }));
+      // 캡처가 붙은 뒤에 재생을 시작해야 발화 앞부분이 잘리지 않는다
+      let unsubStarted = (): void => {};
+      const captureReady = new Promise<void>((resolve) => {
+        unsubStarted = engine.bus.system((m) => {
+          if (m.type === SystemEvent.RECOGNITION_STARTED) resolve();
+        });
+      });
       run = collectRun(engine, timeout);
-      await engine.start(); // getUserMedia 오버라이드가 재생을 시작한다
+      await engine.start(); // getUserMedia는 스트림만 준다(재생 없음)
+      await captureReady;
+      unsubStarted();
+      audio.currentTime = 0;
+      await audio.play();
       await ended;
       await engine.stop(); // 마이크 모드에는 엔진의 자동 종료가 없다
     } else {

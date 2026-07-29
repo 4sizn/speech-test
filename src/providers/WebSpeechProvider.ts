@@ -62,6 +62,28 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
 
   #rec: SpeechRecognition | null = null;
   #track: MediaStreamTrack | null = null;
+  /** 온디바이스 모델 확인 결과 — prepare()에서 미리 정해두고 start()에서는 쓰기만 한다 */
+  #offline: boolean | null = null;
+
+  /**
+   * 온디바이스(SODA) 모델 가용성 확인·설치를 재생 **전에** 끝낸다.
+   *
+   * start() 안에서 확인하면 엔진이 이미 파일 재생을 시작한 뒤라, 모델 조회/다운로드가 걸리는
+   * 사이에 짧은 파일은 재생이 끝나 captureStream 트랙이 죽는다 —
+   * `start(track)`이 "MediaStreamTrack is not of state 'live'"로 실패한다(E2E QA에서 검출).
+   */
+  override async prepare(): Promise<void> {
+    const wantOffline = this.config.location
+      ? this.location === 'local-client'
+      : Boolean(this.config.processLocally);
+    if (!wantOffline) {
+      this.#offline = false;
+      return;
+    }
+    const lang = String(this.config.lang || 'ko-KR');
+    const ok = await this.#ensureLocalModel(lang);
+    this.#offline = ok !== false;
+  }
 
   async start(input: SttInput): Promise<void> {
     // 시작 단계 실패는 throw — 엔진이 RECOGNITION_ERROR로 정규화하고 #active를 되돌린다
@@ -131,16 +153,15 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
       }
     };
 
-    // 오프라인(클라이언트 온디바이스) 모드 — 실행 위치가 local-client면 활성 (과거 processLocally 저장값 호환)
-    // 모델 가용성 확인 후 필요시 설치, 불가하면 온라인 폴백
-    let offline = this.config.location
-      ? this.location === 'local-client'
-      : Boolean(this.config.processLocally);
-    if (offline) {
-      const ok = await this.#ensureLocalModel(rec.lang);
-      if (ok === false) offline = false;
+    // 오프라인(클라이언트 온디바이스) 여부는 prepare()에서 이미 정해졌다 — 여기서 await하지 않는다.
+    // prepare()를 거치지 않은 경로(직접 호출)만 폴백으로 확인한다.
+    if (this.#offline === null) {
+      const wantOffline = this.config.location
+        ? this.location === 'local-client'
+        : Boolean(this.config.processLocally);
+      this.#offline = wantOffline ? (await this.#ensureLocalModel(rec.lang)) !== false : false;
     }
-    rec.processLocally = offline;
+    rec.processLocally = this.#offline;
 
     this.#rec = rec;
     this.#track = canTrack ? track : null;

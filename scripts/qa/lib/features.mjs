@@ -10,6 +10,10 @@
  *       실시간 스트리밍은 재생 타이밍과 서버 백로그에 따라 흔들리고, 클라우드는 더 흔들린다.
  *       재현성보다 타이트한 임계는 회귀가 없어도 매번 FAIL을 내 게이트를 무력화한다.
  *       → 파일 재전사 3%p · 실시간(mic/스트리밍) 5%p · 클라우드 7%p.
+ * gateOptional: true면 판정이 WARN이 되어 전체 PASS/FAIL에 반영되지 않고, 기준선 승격 대상에서도
+ *       제외된다. 클라우드 인식은 서비스 상태에 좌우되기 때문 — 실제로 대량 호출 후 partial만 오고
+ *       final이 끊겨 CER이 100%로 튀었는데, 코드 변경과 무관했다(수정 전 코드로도 동일 재현).
+ *       외부 요인을 우리 커밋의 통과 조건으로 삼으면 게이트가 신뢰를 잃는다.
  * requires: 러너가 전제 조건을 점검해 결과지 환경에 기록한다.
  */
 
@@ -98,6 +102,7 @@ export function buildFeatures(profile = 'quick') {
       location: 'remote-cloud',
       config: {},
       sets: ['short'],
+      gateOptional: true, // 외부 서비스 상태에 좌우된다 — 결과지에는 남기고 게이트 판정에서는 WARN
       tolerance: 0.07,
       requires: { network: true },
       note: '클라우드 인식 — 실행마다 흔들린다',
@@ -109,6 +114,7 @@ export function buildFeatures(profile = 'quick') {
       location: 'remote-cloud',
       config: {},
       sets: ['short'],
+      gateOptional: true, // 외부 서비스 상태에 좌우된다 — 결과지에는 남기고 게이트 판정에서는 WARN
       tolerance: 0.07,
       requires: { network: true },
       note: '클라우드 인식 · 파일 주입 가짜 마이크',
@@ -120,6 +126,7 @@ export function buildFeatures(profile = 'quick') {
       location: 'remote-cloud',
       config: {},
       sets: ['short'],
+      gateOptional: true, // 외부 서비스 상태에 좌우된다 — 결과지에는 남기고 게이트 판정에서는 WARN
       tolerance: 0.05,
       requires: { credentials: 'endpoint+apiKey' },
       note: '자격 미설정이면 SKIP',
@@ -158,6 +165,7 @@ export function buildFeatures(profile = 'quick') {
       location: 'local-client',
       config: {},
       sets: ['short'],
+      gateOptional: true, // 외부 서비스 상태에 좌우된다 — 결과지에는 남기고 게이트 판정에서는 WARN
       tolerance: 0.07,
       requires: { soda: true },
       note: '온디바이스(SODA) — 모델 미지원 환경이면 온라인으로 폴백하며 경고',

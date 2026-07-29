@@ -140,6 +140,7 @@ export function writeReport({ eventsPath, env, plan }) {
       skipped,
       note: p.note ?? null,
       tolerance: p.tolerance ?? 0.02,
+      gateOptional: p.gateOptional ?? false,
       runsInDoc: doc.runs.length,
       prev: doc.runs.length > 1 ? doc.runs[doc.runs.length - 2].cerAvg : null,
     });

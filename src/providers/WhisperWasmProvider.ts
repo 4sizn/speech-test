@@ -133,7 +133,7 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
         { value: 'Xenova/whisper-base', label: 'whisper-base (~74M · 한국어 기본)' },
         { value: 'Xenova/whisper-small', label: 'whisper-small (~244M · 가장 정확 · 느림)' },
       ],
-      hint: '한국어 CER 실측(AI Hub 상담음성 12발화): tiny 458%(환각) · base 24.6% → 기본 base. 가중치는 자체 출처(/models)에서만 로드',
+      hint: '한국어 CER 실측(AI Hub 상담음성 · npm run qa:stt): tiny 48.8% · base 27.4% · small 15.7%(단 지연 2.6배) → 실시간 기본은 base. 가중치는 자체 출처(/models)에서만 로드',
     },
     {
       key: 'maxChunkSec',
