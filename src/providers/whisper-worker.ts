@@ -83,8 +83,22 @@ async function load(model: string): Promise<{ device: string }> {
   return { device };
 }
 
-self.onmessage = async (event: MessageEvent<InMessage>): Promise<void> => {
-  const msg = event.data;
+/**
+ * 추론 직렬화 — transformers.js pipeline은 인스턴스 상태(ONNX 세션·processor)를 공유하므로
+ * 동시 진입하면 결과가 섞인다. `onmessage`가 async라 메시지 2건이 연달아 오면 실제로 겹친다.
+ * provider도 한 번에 1건만 보내지만, 자원의 불변식은 자원을 가진 쪽에서 지킨다
+ * (transcribe 도중 load가 도착해 transcriber를 갈아버리는 경로도 여기서 막힌다).
+ */
+let chain: Promise<unknown> = Promise.resolve();
+function serialize(task: () => Promise<void>): void {
+  chain = chain.then(task, task).catch(() => {});
+}
+
+self.onmessage = (event: MessageEvent<InMessage>): void => {
+  serialize(() => handle(event.data));
+};
+
+async function handle(msg: InMessage): Promise<void> {
   try {
     if (msg.type === 'load') {
       const { device } = await load(msg.model);
@@ -109,4 +123,4 @@ self.onmessage = async (event: MessageEvent<InMessage>): Promise<void> => {
       message,
     });
   }
-};
+}

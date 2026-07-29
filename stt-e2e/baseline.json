@@ -1,53 +1,53 @@
 {
   "features": {
     "whisper-base-file": {
-      "cerAvg": 0.3041,
-      "cerMedian": 0.2778,
+      "cerAvg": 0.2743,
+      "cerMedian": 0.2216,
       "samples": 7,
       "tolerance": 0.05,
-      "at": "2026-07-29T06:48:48.707Z"
+      "at": "2026-07-29T09:14:44.081Z"
     },
     "whisper-base-mic": {
-      "cerAvg": 0.2586,
+      "cerAvg": 0.2595,
       "cerMedian": 0.1977,
       "samples": 6,
       "tolerance": 0.05,
-      "at": "2026-07-29T06:48:48.707Z"
+      "at": "2026-07-29T09:14:44.081Z"
     },
     "streaming-file": {
-      "cerAvg": 0.316,
-      "cerMedian": 0.2814,
+      "cerAvg": 0.2843,
+      "cerMedian": 0.2778,
       "samples": 7,
       "tolerance": 0.05,
-      "at": "2026-07-29T06:48:48.707Z"
+      "at": "2026-07-29T09:14:44.081Z"
     },
     "streaming-mic": {
-      "cerAvg": 0.2776,
-      "cerMedian": 0.2254,
+      "cerAvg": 0.2369,
+      "cerMedian": 0.1915,
       "samples": 6,
       "tolerance": 0.05,
-      "at": "2026-07-29T06:48:48.707Z"
+      "at": "2026-07-29T09:14:44.081Z"
     },
     "sensevoice-file": {
-      "cerAvg": 0.1564,
+      "cerAvg": 0.1669,
       "cerMedian": 0.1579,
       "samples": 7,
       "tolerance": 0.05,
-      "at": "2026-07-29T06:48:48.707Z"
+      "at": "2026-07-29T09:14:44.081Z"
     },
     "sensevoice-mic": {
       "cerAvg": 0.104,
       "cerMedian": 0.1221,
       "samples": 6,
       "tolerance": 0.05,
-      "at": "2026-07-29T06:48:48.707Z"
+      "at": "2026-07-29T09:14:44.081Z"
     },
     "funasr-file": {
       "cerAvg": 0.9949,
       "cerMedian": 1,
       "samples": 7,
       "tolerance": 0.05,
-      "at": "2026-07-29T06:48:48.707Z"
+      "at": "2026-07-29T09:14:44.081Z"
     },
     "webspeech-file": {
       "cerAvg": 0.0869,
@@ -76,9 +76,23 @@
       "samples": 7,
       "tolerance": 0.03,
       "at": "2026-07-29T06:48:48.707Z"
+    },
+    "whisper-base-partial-file": {
+      "cerAvg": 0.2908,
+      "cerMedian": 0.3154,
+      "samples": 6,
+      "tolerance": 0.05,
+      "at": "2026-07-29T09:14:44.081Z"
+    },
+    "whisper-base-partial-mic": {
+      "cerAvg": 0.2721,
+      "cerMedian": 0.1977,
+      "samples": 6,
+      "tolerance": 0.05,
+      "at": "2026-07-29T09:14:44.081Z"
     }
   },
-  "updatedAt": "2026-07-29T06:48:48.707Z",
-  "commit": "1385b1b",
+  "updatedAt": "2026-07-29T09:14:44.081Z",
+  "commit": "3530182",
   "note": "기능별 기준 오류값 — npm run qa:stt -- --update-baseline 으로만 갱신"
 }

@@ -20,6 +20,7 @@ interface WhisperConfig extends ProviderConfig {
    */
   modelId?: string;
   maxChunkSec?: string | number;
+  partialIntervalSec?: string | number;
 }
 
 // ── 발화 분할 기준 (온프레미스 서버 realtime_asr_server.py와 같은 규칙) ──
@@ -29,6 +30,22 @@ const SILENCE_RMS = 0.008;
 const SILENCE_FLUSH_SEC = 0.5;
 /** 이보다 짧은 조각은 인식하지 않는다 — 짧은 파편은 Whisper 환각의 주 원인 */
 const MIN_UTTERANCE_SEC = 1.0;
+/** AudioPcmTap의 프레임 주기(ms) — 중간 결과 트리거의 클럭. 이보다 짧은 주기는 의미가 없다 */
+const FRAME_MS = 250;
+/** 중간 결과 기본 주기(초) */
+const DEFAULT_PARTIAL_SEC = 1.0;
+/**
+ * 이보다 짧은 발화에는 중간 결과를 내지 않는다.
+ * 재인식이 CPU를 잡으면 오디오 캡처가 손실된다 — 실측으로 2.9초 발화의 확정 결과에서
+ * 앞 두 어절이 뭉개져 CER이 11.8%→35.3%(재현 41.2%)로 뛰었다. 짧은 발화는
+ * 어차피 곧 확정되므로 흐르는 자막의 값이 작다 → 긴 발화에만 쓴다.
+ */
+const PARTIAL_MIN_SEC = 2.0;
+/**
+ * 다음 중간 결과까지 최소 간격을 직전 소요시간의 몇 배로 둘지 — 워커 점유율 상한(1/N).
+ * 2면 33%다. 1(=50%)로 두면 위 캡처 손실이 확정 CER을 3~5%p 악화시켰다.
+ */
+const PARTIAL_DUTY_DIVISOR = 2;
 
 function rms(pcm: Float32Array): number {
   let sum = 0;
@@ -146,6 +163,18 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
       placeholder: '20',
       hint: '무음 0.5s 경계에서 자동으로 끊고, 무음이 없으면 이 길이에서 강제 확정(Whisper 인식 창은 30s)',
     },
+    {
+      key: 'partialIntervalSec',
+      label: '중간 결과 주기(초)',
+      default: '1.0',
+      placeholder: '1.0',
+      hint:
+        '발화 중 이 주기로 현재 발화 전체를 다시 인식해 중간 자막을 갱신한다(0이면 끔 — 무음 경계 확정만). ' +
+        'whisper-base 재인식 비용이 대략 0.3s + 0.28×발화길이라 이보다 짧게 줘도 갱신이 그만큼 빨라지지 ' +
+        '않고, 앞선 재인식이 진행 중이면 그 주기는 건너뛴다(온프레미스 서버와 같은 규칙). ' +
+        '재인식 부하는 오디오 캡처를 흔들어 확정 정확도를 떨어뜨린다 — 2초 미만 발화는 건너뛰고 ' +
+        '워커 점유율을 33%로 묶어 실측 회귀를 +2%p 안(관측 변동폭 이내)으로 억제했다',
+    },
   ];
 
   static override isSupported(): boolean {
@@ -165,6 +194,24 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
   #queue: Promise<void> = Promise.resolve();
   #silenceSec = 0;
   #hadSpeech = false;
+  /**
+   * 진행 중인 인식 건수 — 중간 결과는 이게 0일 때만 낸다.
+   * boolean이 아닌 이유: 확정 인식이 연달아 2건 큐에 있을 때 먼저 끝난 쪽이 플래그를 내려
+   * "진행 중 아님"으로 오판하는 창이 생긴다(서버가 같은 이유로 Lock을 쓴다).
+   */
+  #inflight = 0;
+  /**
+   * 발화 세대 — 확정(버퍼 분리)마다 증가. 늦게 도착한 중간 결과를 걸러내는 데 쓴다.
+   * start()에서 되돌리지 않는다 — 단조 증가시켜 이전 실행의 응답과 겹치지 않게 한다.
+   */
+  #utterId = 0;
+  /** 마지막으로 내보낸 중간 결과 — 같은 문장 재전송 억제 + 자리표시 판정 */
+  #lastPartial = '';
+  /** 직전 중간 결과가 끝난 시각(ms) */
+  #partialAtMs = 0;
+  #partialIntervalMs = 0;
+  /** 다음 중간 결과까지 필요한 최소 간격 — 재인식이 길어지면 스스로 늘어난다 */
+  #partialGapMs = 0;
 
   /** 모델 로드/컴파일 — 엔진이 재생 시작 전에 호출한다. */
   override async prepare(): Promise<void> {
@@ -192,6 +239,16 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
     const lang = LANG_MAP[input.lang || this.config.lang || ''];
     const maxSec = Math.max(5, Number(this.config.maxChunkSec || 20));
 
+    // 빈칸·잘못된 값은 기본값으로, 명시적 0만 "끄기"로 읽는다(설정 폼은 빈칸을 ''로 준다).
+    const raw = this.config.partialIntervalSec;
+    const parsed = raw === undefined || raw === null || raw === '' ? DEFAULT_PARTIAL_SEC : Number(raw);
+    const partialSec = Number.isFinite(parsed) ? parsed : DEFAULT_PARTIAL_SEC;
+    // 트리거 클럭이 onFrame(250ms)이라 그보다 짧은 주기는 의미가 없다
+    this.#partialIntervalMs = partialSec > 0 ? Math.max(FRAME_MS, partialSec * 1000) : 0;
+    this.#partialGapMs = this.#partialIntervalMs;
+    this.#partialAtMs = 0;
+    this.#lastPartial = '';
+
     this.#frames = [];
     this.#samples = 0;
     this.#silenceSec = 0;
@@ -215,7 +272,23 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
 
         const sec = this.#samples / 16000;
         const atBoundary = this.#silenceSec >= SILENCE_FLUSH_SEC && sec >= MIN_UTTERANCE_SEC;
-        if (atBoundary || sec >= maxSec) this.#enqueueFlush(lang);
+        if (atBoundary || sec >= maxSec) {
+          this.#enqueueFlush(lang);
+          return;
+        }
+        // 발화 중 중간 결과 — 온프레미스 서버 partial_loop과 같은 방식(현재 발화 전체를 재인식).
+        // 검사를 버퍼 합치기보다 앞에 둔다 — 건너뛸 주기에 수 MB를 복사하지 않기 위해.
+        if (
+          this.#partialIntervalMs > 0 &&
+          this.#inflight === 0 &&
+          // 무음 프레임에서는 시작하지 않는다: 무음 0.5s(=프레임 2개)면 확정이므로 여기서
+          // 수 초짜리 재인식을 걸면 확정이 그만큼 밀린다. 시작한 인식은 취소할 방법이 없다.
+          this.#silenceSec === 0 &&
+          sec >= PARTIAL_MIN_SEC &&
+          performance.now() - this.#partialAtMs >= this.#partialGapMs
+        ) {
+          this.#enqueuePartial(lang);
+        }
       },
     });
     await this.#tap.start();
@@ -236,6 +309,7 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
     this.#samples = 0;
     this.#hadSpeech = false;
     this.#silenceSec = 0;
+    this.#lastPartial = '';
   }
 
   /** 무음 경계에서 호출 — 인식은 직렬로 처리하고, 버퍼는 즉시 떼어내 다음 발화를 계속 받는다. */
@@ -246,7 +320,32 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
     this.#samples = 0;
     this.#silenceSec = 0;
     this.#hadSpeech = false;
-    this.#queue = this.#queue.then(() => this.#transcribe(merged, lang)).catch(() => {});
+    // 세대 증가는 버퍼를 떼어내는 이 동기 블록 안에서 — 응답 도착 시점에 올리면 그 사이
+    // 발행된 중간 결과가 새 발화의 것으로 오인된다.
+    this.#utterId++;
+    this.#enqueue(merged, lang, null);
+  }
+
+  /** 발화 중 호출 — 누적 버퍼를 건드리지 않고 스냅샷만 떠서 중간 결과를 낸다. */
+  #enqueuePartial(lang: string | undefined): void {
+    // mergeFloat32는 항상 새 버퍼를 만들어 #frames와 메모리를 공유하지 않는다
+    // → 확정 인식과 똑같이 소유권을 넘겨 보낼 수 있다(복사 비용 없음).
+    // 길이 상한은 Whisper 인식 창(30s)에만 둔다: 기본 maxChunkSec 20s에서는 걸리지 않고,
+    // 그보다 크게 올린 경우에만 여러 창으로 쪼개는 경로(비용이 창 수만큼 늘어난다)를 막는다.
+    const snapshot = mergeFloat32(this.#frames, this.#samples, CHUNK_LENGTH_SEC * 16000);
+    this.#enqueue(snapshot, lang, this.#utterId);
+  }
+
+  /** gen이 null이면 확정, 숫자면 그 세대의 중간 결과. */
+  #enqueue(pcm: Float32Array, lang: string | undefined, gen: number | null): void {
+    this.#inflight++;
+    this.#queue = this.#queue
+      .then(() => this.#transcribe(pcm, lang, gen))
+      .catch(() => {})
+      // 조기 return이나 예외에도 반드시 내려가야 한다 — 한 번 새면 중간 결과가 영구 정지한다
+      .finally(() => {
+        this.#inflight--;
+      });
   }
 
   /** 워커를 띄우고 메시지 라우팅을 건다(1회). */
@@ -270,7 +369,15 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
         }
       }
     };
-    worker.onerror = (e) => this._sink?.error(new Error(`Whisper 워커 오류: ${e.message}`));
+    worker.onerror = (e) => {
+      // 워커가 죽으면 대기 중인 요청에는 영원히 응답이 오지 않는다 — 전부 거절해 큐를 풀어준다.
+      // 안 풀면 #queue가 영구 대기가 되어 stop()이 끝나지 않고(엔진이 실행 중으로 굳어 재시작
+      // 불가), #inflight도 0으로 돌아오지 않아 중간 결과가 영구 정지한다.
+      const err = new Error(`Whisper 워커 오류: ${e.message}`);
+      for (const p of this.#pending.values()) p.reject(err);
+      this.#pending.clear();
+      this._sink?.error(err);
+    };
     this.#worker = worker;
     return worker;
   }
@@ -301,11 +408,18 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
     });
   }
 
-  /** 한 발화(무음 경계로 잘린 구간)를 워커에 보내 인식하고 final emit. */
-  async #transcribe(pcm: Float32Array, lang: string | undefined): Promise<void> {
+  /**
+   * 워커에 보내 인식한다. gen이 null이면 확정 발화(final), 숫자면 그 세대의 중간 결과(partial).
+   */
+  async #transcribe(pcm: Float32Array, lang: string | undefined, gen: number | null): Promise<void> {
     const worker = this.#worker;
     if (!worker || !this.#loadedKey) return;
-    this._sink?.partial('…인식 중');
+    const isPartial = gen !== null;
+    // 큐에서 기다리는 동안 발화가 확정됐다면(세대가 바뀜) 이 중간 결과는 설명할 대상이 없다
+    if (isPartial && (gen !== this.#utterId || !this._active)) return;
+    // 보여줄 중간 결과가 아직 없을 때만 자리표시 — 있으면 마지막 중간 결과를 남긴다(깜빡임 방지)
+    if (!isPartial && !this.#lastPartial) this._sink?.partial('…인식 중');
+    const startedAt = performance.now();
     const id = ++this.#seq;
     try {
       const text = await new Promise<string>((resolve, reject) => {
@@ -326,9 +440,31 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
         );
       });
       const cleaned = collapseHallucinatedRepeats(text);
+      if (isPartial) {
+        this.#partialAtMs = performance.now();
+        // 재인식이 길어질수록 스스로 뜸해지게 — 워커 점유율 가드.
+        // whisper-base 비용이 대략 0.3s + 0.28×발화길이라(20s 발화면 6s 가까이), 고정 주기로만
+        // 재면 긴 발화에서 워커가 계속 붙잡혀 오디오 캡처까지 흔들린다(확정 CER 3~5%p 악화 실측).
+        this.#partialGapMs = Math.max(
+          this.#partialIntervalMs,
+          (this.#partialAtMs - startedAt) * PARTIAL_DUTY_DIVISOR,
+        );
+        if (gen !== this.#utterId || !this._active) return; // 확정이 이미 나갔다 → 버린다
+        if (!cleaned || cleaned === this.#lastPartial) return;
+        this.#lastPartial = cleaned;
+        this._sink?.partial(cleaned);
+        return;
+      }
+      this.#lastPartial = '';
       if (cleaned) this._sink?.final(cleaned);
     } catch (err) {
       this.#pending.delete(id);
+      if (isPartial) {
+        // 중간 결과 실패는 알리지 않는다 — 같은 워커를 쓰는 확정 경로에서 어차피 드러난다.
+        // 다만 간격은 갱신해야 한다: 안 하면 즉시 재시도해 실패 루프가 된다.
+        this.#partialAtMs = performance.now();
+        return;
+      }
       this._sink?.error(err instanceof Error ? err : new Error(String(err)));
     }
   }
@@ -342,12 +478,28 @@ export class WhisperWasmProvider extends SttProvider<WhisperConfig> {
   }
 }
 
-function mergeFloat32(frames: Float32Array[], total: number): Float32Array {
-  const out = new Float32Array(total);
+/**
+ * 누적 프레임을 하나로 합친다. maxSamples를 주면 **뒤쪽 그만큼만** 취한다.
+ * 반환값은 항상 새 버퍼라 frames와 메모리를 공유하지 않는다 — 그래서 결과를 워커로 보낼 때
+ * 소유권을 넘겨도 누적 버퍼가 망가지지 않는다(frames의 원소를 직접 넘기면 안 되는 이유).
+ */
+function mergeFloat32(frames: Float32Array[], total: number, maxSamples = total): Float32Array {
+  const take = Math.min(total, maxSamples);
+  const out = new Float32Array(take);
+  let skip = total - take;
   let off = 0;
   for (const f of frames) {
-    out.set(f, off);
-    off += f.length;
+    let src = f;
+    if (skip > 0) {
+      if (skip >= f.length) {
+        skip -= f.length;
+        continue;
+      }
+      src = f.subarray(skip);
+      skip = 0;
+    }
+    out.set(src, off);
+    off += src.length;
   }
   return out;
 }

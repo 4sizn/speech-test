@@ -12,6 +12,9 @@ bun.lockb
 # 임시 스크린샷
 _screen.png
 
+# 수동 검증용 임시 오디오/캡처 (데이터셋에서 생성 — 재배포 제약)
+.qa-tmp/
+
 # local-client 자산 (npm run assets 로 생성 — 커밋하지 않음)
 public/ort/
 public/models/

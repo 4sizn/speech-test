@@ -751,6 +751,11 @@ body {
   margin-top: 8px;
   opacity: 0;
   transition: opacity 0.15s;
+  /* 중간 결과는 이제 자리표시 몇 글자가 아니라 발화 전문(수백 자)이 들어온다 —
+     상한을 안 두면 형제인 .transcript(flex:1)의 자막 목록 공간을 잠식한다. */
+  flex: 0 0 auto;
+  max-height: 4.5em;
+  overflow-y: auto;
 }
 .interim.show {
   opacity: 1;

@@ -160,7 +160,7 @@ WebSpeech    Whisper          Streaming        Qwen3
 | Provider | 마이크 | 파일 | 방식 / 비고 |
 |---|---|---|---|
 | **WebSpeech** | ✅ 네이티브 실시간 | ✅ 디지털 트랙 입력 | `start(MediaStreamTrack)` (Chrome ~M133+). captureStream 트랙을 직접 인식 → 노이즈/볼륨 무관 |
-| **Whisper** | ✅ 근실시간 | ✅ 근실시간 | 클라이언트 WASM/WebGPU(transformers.js 번들). 키·외부 도메인 불필요 — 자산은 `npm run assets`로 자체 서빙. 무음 경계로 발화를 잘라 인식(기본 base). **추론은 Web Worker** — 메인 스레드에서 돌리면 UI가 멈춘다 |
+| **Whisper** | ✅ 실시간 | ✅ 실시간 | 클라이언트 WASM/WebGPU(transformers.js 번들). 키·외부 도메인 불필요 — 자산은 `npm run assets`로 자체 서빙. 무음 경계로 발화를 잘라 확정하고, **발화 중에는 주기 재인식으로 중간 자막이 흐른다**(기본 base·1.0s). **추론은 Web Worker** — 메인 스레드에서 돌리면 UI가 멈춘다 |
 | **Streaming** | ✅ 실시간 | ✅ 실시간 | WebSocket(16k Int16 PCM 전송 → partial/final 수신). 온프레미스 백엔드 동봉: `server/realtime_asr_server.py --engine faster-whisper` |
 | **FunASR** | ✅ 실시간 | ✅ 실시간 | paraformer-zh-streaming 증분 디코딩(중국어 전용). 백엔드: `server/… --engine funasr` — 공식 WASM 런타임이 없어 온프레미스만 |
 | **SenseVoice** | ✅ 실시간 | ✅ 실시간 | SenseVoiceSmall 다국어(**ko**/ja/en/zh/yue). 백엔드: `server/… --engine sensevoice` — offline 모델이라 증분 대신 재전사 partial(CPU 기준 ≈1.2s 간격) |
@@ -358,7 +358,31 @@ CER 산출 주의점(코드에 반영됨):
   같은 조건에서 최대 갭 103ms(정상 프레임 편차), 150ms 초과 갭 0회다. WebGPU 경로라도
   자기회귀 디코딩 루프가 JS에서 도는 탓이라 device와 무관하게 필요한 조치다.
   PCM은 소유권 이전(transfer)으로 넘겨 복사 비용을 없앤다.
-- **Whisper(local-client)**: 코드/모델/WASM 런타임 전부 same-origin 자산 — 최초 1회 `npm run assets` 필요(미준비 시 안내 에러). 멀티스레드 WASM은 COOP/COEP(`credentialless`) 헤더 필요 — vite dev/preview에는 설정돼 있고, 미적용 호스팅에서는 단일 스레드로 폴백. WebGPU는 fp32 가중치(`npm run assets -- --webgpu`)가 있을 때만 시도. 한국어 기본은 `whisper-base`(tiny는 8kHz 전화 음성에서 CER 458% — 위 실측 참조). 발화 단위 인식이라 발화가 끝나고 무음 0.5s가 지난 뒤 자막이 뜬다(발화 도중 부분 결과는 없음).
+- **Whisper(local-client)**: 코드/모델/WASM 런타임 전부 same-origin 자산 — 최초 1회 `npm run assets` 필요(미준비 시 안내 에러). 멀티스레드 WASM은 COOP/COEP(`credentialless`) 헤더 필요 — vite dev/preview에는 설정돼 있고, 미적용 호스팅에서는 단일 스레드로 폴백. WebGPU는 fp32 가중치(`npm run assets -- --webgpu`)가 있을 때만 시도. 한국어 기본은 `whisper-base`(tiny는 8kHz 전화 음성에서 CER 458% — 위 실측 참조).
+- **Whisper(local-client) 중간 자막**: 확정은 무음 0.5s 경계지만, 발화 중에는 `partialIntervalSec`
+  (기본 1.0s) 주기로 **현재 발화 전체를 다시 인식해** 중간 자막을 갱신한다 — 온프레미스 서버
+  `partial_loop`과 같은 방식. 서버가 겪은 함정도 같이 가져왔다: 앞선 재인식이 진행 중이면 그 주기를
+  건너뛰고(안 그러면 결과가 계속 뒤로 밀린다), 무음 프레임에서는 시작하지 않는다(확정이 그만큼 밀린다).
+  재인식 비용이 대략 `0.3s + 0.28 × 발화길이`(whisper-base·WebGPU, 결과지 역산 추정)라 주기를 더
+  짧게 줘도 갱신이 그만큼 빨라지지 않는다. 실측(35초 8발화 파일): 중간 자막 5회 갱신 · 확정 5건 ·
+  최대 프레임 갭 78ms · 150ms 초과 갭 0회.
+  **tail-N초가 아니라 발화 전체를 재인식하는 이유**는 발화 중간을 자르는 것이 반복 환각의 직접
+  원인이기 때문이다(아래 실측: 5초 고정 청크 CER 175.8% vs 전체 23.4%). tail만 보내면 중간 자막에
+  환각 반복문이 뜨고, 화면이 전체 치환이라 이미 읽은 앞부분이 사라진다. `0`을 주면 끌 수 있다.
+- **중간 자막의 대가는 캡처 손실이다 — 워커 점유율로 막는다.** 재인식이 CPU를 잡으면 오디오
+  캡처가 흔들려 **확정 결과의 앞부분이 날아간다**. 실측으로 2.9초 발화에서 앞 두 어절이 뭉개져
+  CER 11.8%→35.3%(재현 41.2%)로 뛰었고,
+  6샘플 평균이 +5.3%p(파일)·+3.1%p(마이크) 악화됐다. 두 가드로 되돌렸다 —
+  ① 2초 미만 발화에는 중간 자막을 내지 않는다(어차피 곧 확정된다), ② 다음 재인식까지 최소 간격을
+  직전 소요시간의 2배로 둬 워커 점유율을 33% 이하로 묶는다. 결과: 회귀 **+1.9%p(파일)·+2.1%p(마이크)**로
+  관측 변동폭(4.5%p) 안에 들어왔고 프레임 갭도 273ms→78ms가 됐다. 점유율 가드를 50%로 풀면 회귀가 돌아온다.
+  ⚠ QA의 마이크 모드도 파일 재생을 주입한 가짜 마이크라, 물리 마이크(오디오 디코딩이 없다)가
+  이 부하에 얼마나 견디는지는 **측정하지 않았다** — 위 수치는 재생 기반 캡처의 값이다.
+- **반복 환각 축약이 완전하지 않다**(`collapseWordRepeats`). n-gram을 6어절부터 내려가며
+  탐욕적으로 잡기 때문에, 큰 n에서 먼저 걸리면 더 짧은 진짜 반복 단위를 못 찾는다 —
+  실측: 2어절 구절이 8회 반복된 결과가 4어절 단위로 먼저 걸려 **6회까지만** 줄었다(2어절 단위로
+  보면 2회여야 한다). CER을 완화하기는 하지만 없애지는 못한다. 최소 반복 단위를 먼저 찾는 방식으로
+  바꾸는 것이 개선안.
 - **Streaming**: 동봉된 온프레미스 서버(`server/realtime_asr_server.py`)의 프로토콜이 기본값. 외부 클라우드 벤더에 붙이려면 `#onOpen`/`#send`/`#onMessage`를 해당 스펙에 맞춰 조정.
 - **FunASR**: 기본 모델(paraformer-zh-streaming)이 중국어 전용 — 한국어 실시간은 SenseVoice 또는 Streaming(faster-whisper)을 사용. 공식 브라우저(WASM) 런타임이 없어 실행 위치는 온프레미스만.
 - **SenseVoice**: 다국어(ko/ja/en/zh/yue)지만 offline 모델이라 FunASR paraformer 같은 증분 스트리밍은 아니다(무음 경계 확정 + 주기 재전사 partial). 모델 ≈936MB 최초 다운로드 필요. 공식 브라우저 런타임 미사용 — 실행 위치는 온프레미스만.
