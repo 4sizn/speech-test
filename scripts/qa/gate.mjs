@@ -12,10 +12,17 @@ import { dirname } from 'node:path';
 import { latestSummary, writeSummary } from './lib/report.mjs';
 import { sourceHashes, diffHashes, WATCHED_PATHS, updateBaseline, judge, loadBaseline } from './lib/gate.mjs';
 import { assertNormalizerInSync, loadSamples } from './lib/dataset.mjs';
+import { buildFeatures } from './lib/features.mjs';
 
 const quiet = process.argv.includes('--quiet');
 /** 재측정 없이 최신 결과지를 기준선으로 승격 — 첫 기준선 확립이나 의도된 변화 반영용 */
 const promote = process.argv.includes('--promote');
+/**
+ * 기준선은 그대로 두고 **현재 정책(features.mjs의 tolerance/gateOptional)** 으로만 다시 판정한다.
+ * 허용 오차를 재현성에 맞게 조정했을 때, 40분짜리 재측정 없이 기존 결과지에 반영하기 위한 경로.
+ * 측정값을 건드리지 않으므로 회귀를 감추는 데 쓸 수 없다(기준선도 그대로다).
+ */
+const rejudge = process.argv.includes('--rejudge');
 const say = (...a) => !quiet && console.log(...a);
 const fail = (msg, hint) => {
   console.error(`\n✗ STT QA 게이트: ${msg}`);
@@ -30,6 +37,25 @@ if (!latest) {
 
 const { doc, stamp, path } = latest;
 say(`최신 결과지: ${path.replace(process.cwd() + '/', '')} (${stamp}, profile ${doc.env?.profile ?? '?'})`);
+
+// 결과지에 박힌 tolerance/gateOptional은 측정 시점의 정책이다. 판정에는 **현재 정책**을 쓴다.
+const currentPolicy = new Map(buildFeatures(doc.env?.profile ?? 'quick').map((f) => [f.feature, f]));
+for (const r of doc.rows ?? []) {
+  const p = currentPolicy.get(r.feature);
+  if (!p) continue;
+  r.tolerance = p.tolerance ?? r.tolerance;
+  r.gateOptional = p.gateOptional ?? false;
+}
+
+if (rejudge) {
+  const rj = judge(doc.rows ?? [], loadBaseline(), doc.env?.planFeatures);
+  writeSummary({ dir: dirname(path), stamp, rows: doc.rows ?? [], verdicts: rj.verdicts, env: doc.env, overall: rj.overall });
+  console.log(`현재 정책으로 재판정: ${rj.overall.pass ? 'PASS' : 'FAIL'} — ${rj.overall.message}`);
+  for (const v of rj.verdicts.filter((v) => v.verdict !== 'PASS')) {
+    console.log(`  ${v.verdict.padEnd(5)} ${v.feature.padEnd(22)} ${v.reason ?? ''}`);
+  }
+  process.exit(rj.overall.pass ? 0 : 1);
+}
 
 if (promote) {
   const measured = (doc.rows ?? []).filter((r) => !r.skipped && r.cerAvg != null);

@@ -9,7 +9,10 @@
  *       sensevoice-mic 3.6%p · webspeech-file 3.7%p.
  *       실시간 스트리밍은 재생 타이밍과 서버 백로그에 따라 흔들리고, 클라우드는 더 흔들린다.
  *       재현성보다 타이트한 임계는 회귀가 없어도 매번 FAIL을 내 게이트를 무력화한다.
- *       → 파일 재전사 3%p · 실시간(mic/스트리밍) 5%p · 클라우드 7%p.
+ *       whisper-base-file은 6회 관측 범위가 27.4~31.9%(4.5%p)였다 — WebGPU 경로와 무음 경계
+ *       분할이 시스템 부하에 따라 조각 수를 바꾸기 때문. 처음 3%p로 뒀다가 무관한 커밋에서
+ *       0.2%p 초과로 FAIL이 나 5%p로 올렸다.
+ *       → 전 기능 5%p · 클라우드 7%p.
  * gateOptional: true면 판정이 WARN이 되어 전체 PASS/FAIL에 반영되지 않고, 기준선 승격 대상에서도
  *       제외된다. 클라우드 인식은 서비스 상태에 좌우되기 때문 — 실제로 대량 호출 후 partial만 오고
  *       final이 끊겨 CER이 100%로 튀었는데, 코드 변경과 무관했다(수정 전 코드로도 동일 재현).
@@ -29,7 +32,7 @@ export function buildFeatures(profile = 'quick') {
       location: 'local-client',
       config: { modelId: 'Xenova/whisper-base', maxChunkSec: '20' },
       sets: ['short', 'long'],
-      tolerance: 0.03,
+      tolerance: 0.05,
       requires: { asset: 'Xenova/whisper-base' },
     },
     {

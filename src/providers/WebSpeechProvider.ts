@@ -11,6 +11,33 @@ function getSR(): SpeechRecognitionStatic | undefined {
 }
 
 /**
+ * SpeechRecognition 에러 코드를 사용자가 다음 행동을 고를 수 있는 문장으로 바꾼다.
+ *
+ * 특히 `network`는 원인이 우리 쪽이 아닌데 조용히 실패해 오해를 산다. 계측으로 확인한 바:
+ * 같은 코드·같은 Chrome 빌드에서 트랙 입력(start(track)) 세션만 즉시 network로 끊기고,
+ * 마이크 경로(start())는 정상 열렸다. API 지원(오버로드)·권한·온라인 상태·격리(COOP/COEP)는
+ * 모두 정상이었다 → 브라우저 인식 서비스가 트랙 입력 세션을 거부하는 상태(쿼터/정책 추정).
+ * 코드로 우회할 수 없으므로 대체 Provider를 안내한다.
+ */
+function describeError(code: string, hadTrack: boolean): string {
+  if (code === 'network') {
+    return hadTrack
+      ? '브라우저 음성 인식 서비스에 연결하지 못했습니다(network). 오디오 트랙 입력 세션이 거부되는 상태일 수 있습니다 — Whisper(로컬) 또는 SenseVoice(온프레미스) Provider로 전환하세요.'
+      : '브라우저 음성 인식 서비스에 연결하지 못했습니다(network). 네트워크를 확인하거나 Whisper(로컬) Provider를 사용하세요.';
+  }
+  if (code === 'not-allowed' || code === 'service-not-allowed') {
+    return `음성 인식이 허용되지 않았습니다(${code}). 마이크 권한과 사이트 설정을 확인하세요.`;
+  }
+  if (code === 'language-not-supported') {
+    return '이 언어는 브라우저 음성 인식이 지원하지 않습니다 — Whisper 또는 SenseVoice를 사용하세요.';
+  }
+  if (code === 'audio-capture') {
+    return '오디오를 캡처하지 못했습니다(audio-capture). 입력 장치를 확인하세요.';
+  }
+  return `SpeechRecognition error: ${code}`;
+}
+
+/**
  * 브라우저 Web Speech API(SpeechRecognition) Provider.
  *
  * ── 핵심(2026~) ──
@@ -136,7 +163,7 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
         fatal = true;
         this._active = false;
       }
-      this._sink?.error(new Error(`SpeechRecognition error: ${event.error}`));
+      this._sink?.error(new Error(describeError(event.error, this.#track != null)));
     };
 
     rec.onend = () => {
