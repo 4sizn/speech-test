@@ -1,8 +1,8 @@
 {
   "stamp": "2026-07-30",
   "env": {
-    "at": "2026-07-30T02:56:41.697Z",
-    "commit": "f557d72",
+    "at": "2026-07-30T03:37:54.185Z",
+    "commit": "65ce8cd",
     "dirty": true,
     "profile": "quick",
     "snapshot": {
@@ -21,7 +21,7 @@
     },
     "sourceHashes": {
       "package.json": "1cc9be3e6cb4",
-      "server/realtime_asr_server.py": "d284f84202cc",
+      "server/realtime_asr_server.py": "56c2a278e611",
       "src/core/AudioPcmTap.ts": "5c04d1c3b157",
       "src/core/EventBus.ts": "ccc870ebb85a",
       "src/core/ProviderRegistry.ts": "84e1a35d35d0",
@@ -60,100 +60,100 @@
     {
       "feature": "whisper-base-file",
       "samples": 7,
-      "cerAvg": 0.3265,
+      "cerAvg": 0.3306,
       "cerMedian": 0.2778,
-      "cerWorst": 0.5833,
-      "msAvg": 12767,
+      "cerWorst": 0.5789,
+      "msAvg": 12640,
       "skipped": null,
       "note": null,
       "tolerance": 0.05,
       "gateOptional": false,
-      "runsInDoc": 4,
-      "prev": 0.3242
+      "runsInDoc": 6,
+      "prev": 0.3105
     },
     {
       "feature": "whisper-base-mic",
       "samples": 6,
-      "cerAvg": 0.2586,
+      "cerAvg": 0.2734,
       "cerMedian": 0.1977,
       "cerWorst": 0.5789,
-      "msAvg": 6917,
+      "msAvg": 7133,
       "skipped": null,
       "note": null,
       "tolerance": 0.05,
       "gateOptional": false,
-      "runsInDoc": 4,
-      "prev": 0.2535
+      "runsInDoc": 6,
+      "prev": 0.2576
     },
     {
       "feature": "whisper-base-partial-file",
       "samples": 6,
-      "cerAvg": 0.3057,
+      "cerAvg": 0.2554,
       "cerMedian": 0.1977,
-      "cerWorst": 0.6316,
-      "msAvg": 6702,
+      "cerWorst": 0.5278,
+      "msAvg": 6853,
       "skipped": null,
       "note": "중간 결과(주기 재인식)를 켠 실사용 경로 — 확정 정확도가 그 부하에 흔들리지 않는지 감시",
       "tolerance": 0.05,
       "gateOptional": false,
-      "runsInDoc": 4,
-      "prev": 0.3197
+      "runsInDoc": 6,
+      "prev": 0.3766
     },
     {
       "feature": "whisper-base-partial-mic",
       "samples": 6,
-      "cerAvg": 0.2822,
-      "cerMedian": 0.1977,
+      "cerAvg": 0.253,
+      "cerMedian": 0.1915,
       "cerWorst": 0.6316,
-      "msAvg": 6800,
+      "msAvg": 6974,
       "skipped": null,
       "note": "중간 결과를 켠 마이크 경로 — 재인식 부하가 마이크 캡처에도 번지는지 감시. 다만 이 마이크도 파일 재생 주입이라 물리 마이크(디코딩 없음)보다 부하에 취약할 수 있다",
       "tolerance": 0.05,
       "gateOptional": false,
-      "runsInDoc": 4,
-      "prev": 0.2633
+      "runsInDoc": 6,
+      "prev": 0.2683
     },
     {
       "feature": "streaming-file",
       "samples": 7,
-      "cerAvg": 0.1451,
-      "cerMedian": 0.1111,
-      "cerWorst": 0.2778,
-      "msAvg": 11817,
+      "cerAvg": 0.1528,
+      "cerMedian": 0.1667,
+      "cerWorst": 0.3158,
+      "msAvg": 11256,
       "skipped": null,
       "note": null,
       "tolerance": 0.05,
       "gateOptional": false,
-      "runsInDoc": 4,
-      "prev": 0.2992
+      "runsInDoc": 6,
+      "prev": 0.2757
     },
     {
       "feature": "streaming-mic",
       "samples": 6,
-      "cerAvg": 0.1045,
-      "cerMedian": 0.0556,
-      "cerWorst": 0.3056,
-      "msAvg": 6643,
+      "cerAvg": 0.1138,
+      "cerMedian": 0.1052,
+      "cerWorst": 0.25,
+      "msAvg": 6698,
       "skipped": null,
       "note": null,
       "tolerance": 0.05,
       "gateOptional": false,
-      "runsInDoc": 4,
-      "prev": 0.2725
+      "runsInDoc": 6,
+      "prev": 0.105
     },
     {
       "feature": "sensevoice-file",
       "samples": 7,
-      "cerAvg": 0.1643,
-      "cerMedian": 0.1667,
-      "cerWorst": 0.3593,
-      "msAvg": 11191,
+      "cerAvg": 0.1524,
+      "cerMedian": 0.1389,
+      "cerWorst": 0.3533,
+      "msAvg": 11032,
       "skipped": null,
       "note": null,
       "tolerance": 0.05,
       "gateOptional": false,
-      "runsInDoc": 4,
-      "prev": 0.1645
+      "runsInDoc": 6,
+      "prev": 0.1522
     },
     {
       "feature": "sensevoice-mic",
@@ -161,40 +161,40 @@
       "cerAvg": 0.1087,
       "cerMedian": 0.1316,
       "cerWorst": 0.2222,
-      "msAvg": 6728,
+      "msAvg": 6711,
       "skipped": null,
       "note": null,
       "tolerance": 0.05,
       "gateOptional": false,
-      "runsInDoc": 4,
-      "prev": 0.1087
+      "runsInDoc": 6,
+      "prev": 0.104
     },
     {
       "feature": "funasr-file",
       "samples": 7,
-      "cerAvg": 0.994,
+      "cerAvg": 0.9949,
       "cerMedian": 1,
       "cerWorst": 1,
-      "msAvg": 10873,
+      "msAvg": 10965,
       "skipped": null,
       "note": "중국어 전용 모델 — 절대 CER 무의미, 회귀 감지용",
       "tolerance": 0.05,
       "gateOptional": false,
-      "runsInDoc": 4,
-      "prev": 0.9949
+      "runsInDoc": 6,
+      "prev": 0.994
     },
     {
       "feature": "webspeech-file",
       "samples": 6,
-      "cerAvg": 0.0869,
-      "cerMedian": 0.079,
-      "cerWorst": 0.2222,
-      "msAvg": 5622,
+      "cerAvg": 0.0509,
+      "cerMedian": 0.0526,
+      "cerWorst": 0.1111,
+      "msAvg": 5659,
       "skipped": null,
       "note": "클라우드 인식 — 실행마다 흔들린다(허용 7%p)",
       "tolerance": 0.07,
       "gateOptional": false,
-      "runsInDoc": 4,
+      "runsInDoc": 6,
       "prev": 0.0869
     },
     {
@@ -203,12 +203,12 @@
       "cerAvg": 1,
       "cerMedian": 1,
       "cerWorst": 1,
-      "msAvg": 5571,
+      "msAvg": 5633,
       "skipped": null,
       "note": "파일 주입 가짜 마이크라 실제로는 파일 트랙 경로를 측정한다 — 마이크 경로는 사람이 확인",
       "tolerance": 0.07,
       "gateOptional": true,
-      "runsInDoc": 4,
+      "runsInDoc": 6,
       "prev": 1
     },
     {
@@ -222,7 +222,7 @@
       "note": "자격 미설정이면 SKIP",
       "tolerance": 0.05,
       "gateOptional": true,
-      "runsInDoc": 4,
+      "runsInDoc": 6,
       "prev": null
     }
   ],
@@ -231,57 +231,57 @@
       "feature": "whisper-base-file",
       "verdict": "PASS",
       "baseline": 0.304,
-      "cerAvg": 0.3265,
-      "delta": 0.0225,
-      "reason": "+2.3%p / 허용 5%p"
+      "cerAvg": 0.3306,
+      "delta": 0.0266,
+      "reason": "+2.7%p / 허용 5%p"
     },
     {
       "feature": "whisper-base-mic",
       "verdict": "PASS",
       "baseline": 0.2586,
-      "cerAvg": 0.2586,
-      "delta": 0,
-      "reason": "+0.0%p / 허용 5%p"
+      "cerAvg": 0.2734,
+      "delta": 0.0148,
+      "reason": "+1.5%p / 허용 5%p"
     },
     {
       "feature": "whisper-base-partial-file",
       "verdict": "PASS",
       "baseline": 0.3057,
-      "cerAvg": 0.3057,
-      "delta": 0,
-      "reason": "+0.0%p / 허용 5%p"
+      "cerAvg": 0.2554,
+      "delta": -0.0503,
+      "reason": "-5.0%p / 허용 5%p"
     },
     {
       "feature": "whisper-base-partial-mic",
       "verdict": "PASS",
       "baseline": 0.2822,
-      "cerAvg": 0.2822,
-      "delta": 0,
-      "reason": "+0.0%p / 허용 5%p"
+      "cerAvg": 0.253,
+      "delta": -0.0292,
+      "reason": "-2.9%p / 허용 5%p"
     },
     {
       "feature": "streaming-file",
       "verdict": "PASS",
       "baseline": 0.1451,
-      "cerAvg": 0.1451,
-      "delta": 0,
-      "reason": "+0.0%p / 허용 5%p"
+      "cerAvg": 0.1528,
+      "delta": 0.0077,
+      "reason": "+0.8%p / 허용 5%p"
     },
     {
       "feature": "streaming-mic",
       "verdict": "PASS",
       "baseline": 0.1045,
-      "cerAvg": 0.1045,
-      "delta": 0,
-      "reason": "+0.0%p / 허용 5%p"
+      "cerAvg": 0.1138,
+      "delta": 0.0093,
+      "reason": "+0.9%p / 허용 5%p"
     },
     {
       "feature": "sensevoice-file",
       "verdict": "PASS",
       "baseline": 0.1643,
-      "cerAvg": 0.1643,
-      "delta": 0,
-      "reason": "+0.0%p / 허용 5%p"
+      "cerAvg": 0.1524,
+      "delta": -0.0119,
+      "reason": "-1.2%p / 허용 5%p"
     },
     {
       "feature": "sensevoice-mic",
@@ -295,17 +295,17 @@
       "feature": "funasr-file",
       "verdict": "PASS",
       "baseline": 0.994,
-      "cerAvg": 0.994,
-      "delta": 0,
-      "reason": "+0.0%p / 허용 5%p"
+      "cerAvg": 0.9949,
+      "delta": 0.0009,
+      "reason": "+0.1%p / 허용 5%p"
     },
     {
       "feature": "webspeech-file",
       "verdict": "PASS",
       "baseline": 0.0869,
-      "cerAvg": 0.0869,
-      "delta": 0,
-      "reason": "+0.0%p / 허용 7%p"
+      "cerAvg": 0.0509,
+      "delta": -0.036,
+      "reason": "-3.6%p / 허용 7%p"
     },
     {
       "feature": "webspeech-mic",

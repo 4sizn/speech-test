@@ -237,10 +237,26 @@ python3 -m venv .venv
 - faster-whisper: 발화 버퍼를 0.6s 주기로 재전사해 partial, RMS 무음 0.9s에서 final.
   **기본 모델은 small** — 한국어에서 SenseVoice보다 정확하고 띄어쓰기가 크게 낫다(근거는 아래 표).
   정확도를 더 원하면 `--model medium`(CER 11.6%)이지만 RTF 0.93이라 partial 재전사가 밀린다.
+- **재전사 엔진의 자막 되돌림을 LocalAgreement로 줄인다**(`Session.stabilize`). 매 주기 발화 전체를
+  다시 인식하니 앞부분 결과가 계속 바뀌어 자막이 튄다 → **연속 두 재전사가 일치한 접두를 확정**해
+  그 뒤로는 되돌리지 않는다. 실측(8샘플·small·주기 0.6s): 되돌려진 글자 **380자 → 183자**,
+  갱신 52→49회. 역행이 0이 되지는 않는다 — 기반 인식이 흔들리면 확정 접두도 짧게 잡히고, 확정을
+  더 강하게 밀면 틀린 앞부분을 고집하게 된다. final은 이 경로를 안 거치므로 CER에 영향이 없다.
+- **`MAX_UTTERANCE_SEC`는 모델 속도와 묶여 있다**(현재 15s). 강제 확정은 그 길이만큼 다시 전사하므로
+  25s×RTF 0.36(small) ≈ 9s가 걸리는데, 그 사이 재생/발화가 끝나면 확정이 클라이언트 종료 뒤에
+  도착해 **유실된다**(실측: 35초 파일 final 0건 → CER 100%). base(RTF 0.13)에서는 3s라 드러나지
+  않던 함정이다. 모델을 키울 때는 이 값도 함께 봐야 한다.
 - FunASR: paraformer 스트리밍의 600ms 청크 증분 디코딩(진짜 스트리밍) — 부분 결과가 누적된다.
   기본 모델은 non-large(CPU에서 rtf<1 실시간). large(`--model paraformer-zh-streaming`)는 정확도가
   높지만 CPU에서 rtf≈2로 백로그가 쌓여 실시간 불가 — GPU 서버에서만 권장.
   ⚠ 중국어 단일 언어 모델(vocab8404)이라 **한국어를 넣으면 중국어 음절로 강제 매핑**된다 → 한국어는 SenseVoice/faster-whisper.
+- **한국어 증분 스트리밍 모델은 찾지 못했다**(2026-07 조사·실측, 같은 8샘플):
+  `sherpa-onnx-streaming-zipformer-korean-2024-06-16`(KsponSpeech, 진짜 online transducer)은
+  CER 72.8% · WER 100% — **공백을 아예 출력하지 않는다**(모델 자체 샘플도
+  `부모가저질른큰실수중하나는…`). 16kHz 깨끗한 음성엔 정확하지만 8kHz 상담음성에서 무너진다.
+  `vosk-model-small-ko-0.22`는 CER 71.0% · WER 107.8%로 인식 자체가 붕괴(`매우 네 아이 합숙 때…`).
+  → 진짜 증분 스트리밍이 필요하면 중국어(FunASR)뿐이고, **한국어는 재전사 + LocalAgreement**가
+  현재 최선이다.
 - SenseVoice: `iic/SenseVoiceSmall`(≈936MB) — 한국어 공식 지원(모델 `lid_dict`에 `ko`). 스트리밍
   API가 없는 offline 모델이라 faster-whisper와 같은 재전사 방식으로 partial을 만든다.
   언어는 UI의 언어 선택값(`ko-KR`→`ko`)을 그대로 쓰고, 미지원 코드는 모델이 auto로 판별한다.

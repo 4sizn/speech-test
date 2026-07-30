@@ -54,7 +54,11 @@ os.environ.setdefault("MODELSCOPE_CACHE", str(MODELS_DIR / "funasr"))
 SILENCE_RMS = 0.008
 SILENCE_FINALIZE_SEC = 0.9  # 이만큼 무음이 이어지면 발화 확정
 PARTIAL_INTERVAL_SEC = 0.6  # partial 재전사 기본 주기 — 엔진이 PARTIAL_INTERVAL_SEC로 재정의 가능
-MAX_UTTERANCE_SEC = 25.0    # 무음이 없어도 이 길이에서 강제 확정
+# 무음이 없어도 이 길이에서 강제 확정. **모델 속도와 묶여 있다** — 확정은 그 길이만큼을
+# 다시 전사하므로 25s×RTF 0.36(small) ≈ 9s가 걸리고, 그 사이 재생/발화가 끝나면 확정 결과가
+# 클라이언트 종료 뒤에 도착해 유실된다(실측: 35초 파일에서 final 0건 → CER 100%).
+# 15s면 ≈5s로 줄어 여유가 생기고, partial 스냅샷 상한(최근 15초)과도 맞는다.
+MAX_UTTERANCE_SEC = 15.0
 
 
 def rms(pcm: np.ndarray) -> float:
@@ -102,6 +106,11 @@ class FasterWhisperEngine:
             without_timestamps=True,
         )
         return "".join(s.text for s in segments).strip()
+
+    def warmup(self) -> None:
+        # 첫 호출은 커널 초기화로 느리다 — 무음으로 미리 태워 첫 발화 확정이 밀리지 않게 한다
+        # (SenseVoice와 같은 이유. 확정이 늦으면 클라이언트 종료 뒤에 도착해 유실된다.)
+        self.transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32), None)
 
 
 class SenseVoiceEngine:
@@ -193,6 +202,10 @@ class Session:
         self.silence_sec = 0.0
         self.had_speech = False
         self.last_partial = ""
+        # LocalAgreement 상태 — 재전사 결과가 흔들려도 이미 보여준 자막을 되돌리지 않기 위한 것.
+        # committed: 연속 두 재전사가 일치해 확정된 접두 · prev_snapshot: 직전 재전사 결과
+        self.committed = ""
+        self.prev_snapshot = ""
         self.fun_state = engine.new_stream() if engine_kind == "funasr" else None
         self.fun_pending = np.zeros(0, dtype=np.float32)
         # 엔진이 자기 추론 비용에 맞는 주기를 선언하면 그걸 쓴다(SenseVoice=1.2s)
@@ -259,9 +272,40 @@ class Session:
                     continue  # 앞선 추론이 진행 중 — 재전사를 쌓으면 결과가 계속 뒤로 밀린다
                 snapshot = self.buf[-SAMPLE_RATE * 15 :]  # 최근 15초까지만
                 text = await self.infer(self.engine.transcribe, snapshot, self.lang)
-                if text and text != self.last_partial:
-                    self.last_partial = text
-                    await self.send(text, False)
+                out = self.stabilize(text)
+                if out and out != self.last_partial:
+                    self.last_partial = out
+                    await self.send(out, False)
+
+    def stabilize(self, text: str) -> str:
+        """
+        LocalAgreement — 이미 보여준 자막이 되돌아가는 양을 줄인다.
+
+        재전사 방식은 매 주기 발화 전체를 다시 인식하므로 앞부분 결과가 계속 바뀐다.
+        사용자 눈에는 자막이 튀는 것으로 보인다. **연속 두 재전사가 일치한 접두**는 상당히
+        믿을 만하므로 확정(committed)으로 굳히고, 그 뒤로는 확정분을 유지한다.
+
+        실측(AI Hub 8샘플 · faster-whisper small · 주기 0.6s):
+          되돌려진 글자 수  380 → 183 (절반)
+          갱신 횟수          52 → 49
+        역행이 완전히 사라지지는 않는다 — 기반 인식이 흔들리면 확정 접두도 짧게 잡힌다.
+        확정을 더 강하게 밀면(항상 committed 유지) 틀린 앞부분을 고집하게 되므로 여기까지가 균형.
+
+        final은 이 함수를 거치지 않는다(발화 전체 재전사 그대로) → CER에 영향이 없다.
+        """
+        if not text:
+            return text
+        prev_words = self.prev_snapshot.split()
+        cur_words = text.split()
+        n = 0
+        while n < min(len(prev_words), len(cur_words)) and prev_words[n] == cur_words[n]:
+            n += 1
+        agreed = " ".join(cur_words[:n])
+        if len(agreed) > len(self.committed):
+            self.committed = agreed
+        self.prev_snapshot = text
+        # 새 결과가 확정분을 지키면 그대로, 아니면 확정분까지만 보여 되돌림을 막는다
+        return text if text.startswith(self.committed) else self.committed
 
     async def finalize(self):
         if self.kind == "funasr":
@@ -282,6 +326,9 @@ class Session:
         self.had_speech = False
         self.silence_sec = 0.0
         self.last_partial = ""
+        # 발화가 끝났으므로 확정 접두도 버린다 — 다음 발화까지 끌고 가면 엉뚱한 접두를 고집한다
+        self.committed = ""
+        self.prev_snapshot = ""
 
 
 async def handle(ws, engine, engine_kind: str):

@@ -494,6 +494,248 @@
           "timedOut": false
         }
       ]
+    },
+    {
+      "at": "2026-07-30T03:24:07.686Z",
+      "commit": "65ce8cd",
+      "dirty": true,
+      "profile": "quick",
+      "env": {
+        "chrome": "Chrome/150.0.7871.187",
+        "assets": {
+          "Xenova/whisper-base": true
+        },
+        "servers": {
+          "8765": "reused",
+          "8766": "reused",
+          "8767": "reused"
+        },
+        "dataset": "aihub_call_center_dataset (AI Hub 상황별음성 상담 음성 / KtelSpeech)",
+        "samples": 7,
+        "fakeMic": true
+      },
+      "sourceHashes": {
+        "package.json": "1cc9be3e6cb4",
+        "server/realtime_asr_server.py": "279835a33370",
+        "src/core/AudioPcmTap.ts": "5c04d1c3b157",
+        "src/core/EventBus.ts": "ccc870ebb85a",
+        "src/core/ProviderRegistry.ts": "84e1a35d35d0",
+        "src/core/SttEngine.ts": "1f07c049da57",
+        "src/core/SttProvider.ts": "0ad91656a7fc",
+        "src/core/cer.ts": "d462c3123f08",
+        "src/core/events.ts": "c97d2242ef20",
+        "src/providers/FunAsrProvider.ts": "f445e8734eeb",
+        "src/providers/Qwen3Provider.ts": "114f77b8891d",
+        "src/providers/SenseVoiceProvider.ts": "6864951abd6b",
+        "src/providers/StreamingAsrProvider.ts": "256f600ea4ef",
+        "src/providers/WebSpeechProvider.ts": "deb63780713e",
+        "src/providers/WhisperWasmProvider.ts": "c2e9ec3b81ad",
+        "src/providers/registerAll.ts": "13cdda90c916",
+        "src/providers/whisper-worker.ts": "c9e3208c4bcb",
+        "src/qa/harness.ts": "cb8b978f8ff6",
+        "vite.config.ts": "32419d7ae4c0"
+      },
+      "cerAvg": 0.3766,
+      "cerMedian": 0.3742,
+      "cerWorst": 0.7368,
+      "msAvg": 6911,
+      "samples": 6,
+      "skipped": null,
+      "items": [
+        {
+          "id": "S00007727/0002",
+          "sec": 3.34,
+          "cer": 0.7368,
+          "distance": 14,
+          "refLength": 19,
+          "hypLength": 22,
+          "ms": 7694,
+          "finals": 1,
+          "partials": 1,
+          "timedOut": false
+        },
+        {
+          "id": "S00007727/0003",
+          "sec": 2.64,
+          "cer": 0.1053,
+          "distance": 2,
+          "refLength": 19,
+          "hypLength": 24,
+          "ms": 5230,
+          "finals": 1,
+          "partials": 1,
+          "timedOut": false
+        },
+        {
+          "id": "S00007731/0001",
+          "sec": 2.65,
+          "cer": 0.2778,
+          "distance": 5,
+          "refLength": 18,
+          "hypLength": 22,
+          "ms": 5225,
+          "finals": 1,
+          "partials": 1,
+          "timedOut": false
+        },
+        {
+          "id": "S00007731/0002",
+          "sec": 6.51,
+          "cer": 0.6389,
+          "distance": 23,
+          "refLength": 36,
+          "hypLength": 56,
+          "ms": 9622,
+          "finals": 1,
+          "partials": 2,
+          "timedOut": false
+        },
+        {
+          "id": "S00007735/0007",
+          "sec": 5.38,
+          "cer": 0.0303,
+          "distance": 1,
+          "refLength": 33,
+          "hypLength": 42,
+          "ms": 8036,
+          "finals": 1,
+          "partials": 1,
+          "timedOut": false
+        },
+        {
+          "id": "S00007735/0009",
+          "sec": 2.91,
+          "cer": 0.4706,
+          "distance": 8,
+          "refLength": 17,
+          "hypLength": 23,
+          "ms": 5660,
+          "finals": 1,
+          "partials": 1,
+          "timedOut": false
+        }
+      ]
+    },
+    {
+      "at": "2026-07-30T03:37:54.185Z",
+      "commit": "65ce8cd",
+      "dirty": true,
+      "profile": "quick",
+      "env": {
+        "chrome": "Chrome/150.0.7871.187",
+        "assets": {
+          "Xenova/whisper-base": true
+        },
+        "servers": {
+          "8765": "reused",
+          "8766": "reused",
+          "8767": "reused"
+        },
+        "dataset": "aihub_call_center_dataset (AI Hub 상황별음성 상담 음성 / KtelSpeech)",
+        "samples": 7,
+        "fakeMic": true
+      },
+      "sourceHashes": {
+        "package.json": "1cc9be3e6cb4",
+        "server/realtime_asr_server.py": "56c2a278e611",
+        "src/core/AudioPcmTap.ts": "5c04d1c3b157",
+        "src/core/EventBus.ts": "ccc870ebb85a",
+        "src/core/ProviderRegistry.ts": "84e1a35d35d0",
+        "src/core/SttEngine.ts": "1f07c049da57",
+        "src/core/SttProvider.ts": "0ad91656a7fc",
+        "src/core/cer.ts": "d462c3123f08",
+        "src/core/events.ts": "c97d2242ef20",
+        "src/providers/FunAsrProvider.ts": "f445e8734eeb",
+        "src/providers/Qwen3Provider.ts": "114f77b8891d",
+        "src/providers/SenseVoiceProvider.ts": "6864951abd6b",
+        "src/providers/StreamingAsrProvider.ts": "256f600ea4ef",
+        "src/providers/WebSpeechProvider.ts": "deb63780713e",
+        "src/providers/WhisperWasmProvider.ts": "c2e9ec3b81ad",
+        "src/providers/registerAll.ts": "13cdda90c916",
+        "src/providers/whisper-worker.ts": "c9e3208c4bcb",
+        "src/qa/harness.ts": "cb8b978f8ff6",
+        "vite.config.ts": "32419d7ae4c0"
+      },
+      "cerAvg": 0.2554,
+      "cerMedian": 0.1977,
+      "cerWorst": 0.5278,
+      "msAvg": 6853,
+      "samples": 6,
+      "skipped": null,
+      "items": [
+        {
+          "id": "S00007727/0002",
+          "sec": 3.34,
+          "cer": 0.4737,
+          "distance": 9,
+          "refLength": 19,
+          "hypLength": 23,
+          "ms": 7328,
+          "finals": 1,
+          "partials": 1,
+          "timedOut": false
+        },
+        {
+          "id": "S00007727/0003",
+          "sec": 2.64,
+          "cer": 0.1053,
+          "distance": 2,
+          "refLength": 19,
+          "hypLength": 24,
+          "ms": 5279,
+          "finals": 1,
+          "partials": 1,
+          "timedOut": false
+        },
+        {
+          "id": "S00007731/0001",
+          "sec": 2.65,
+          "cer": 0.2778,
+          "distance": 5,
+          "refLength": 18,
+          "hypLength": 22,
+          "ms": 5410,
+          "finals": 1,
+          "partials": 1,
+          "timedOut": false
+        },
+        {
+          "id": "S00007731/0002",
+          "sec": 6.51,
+          "cer": 0.5278,
+          "distance": 19,
+          "refLength": 36,
+          "hypLength": 55,
+          "ms": 9331,
+          "finals": 1,
+          "partials": 2,
+          "timedOut": false
+        },
+        {
+          "id": "S00007735/0007",
+          "sec": 5.38,
+          "cer": 0.0303,
+          "distance": 1,
+          "refLength": 33,
+          "hypLength": 42,
+          "ms": 8176,
+          "finals": 1,
+          "partials": 1,
+          "timedOut": false
+        },
+        {
+          "id": "S00007735/0009",
+          "sec": 2.91,
+          "cer": 0.1176,
+          "distance": 2,
+          "refLength": 17,
+          "hypLength": 23,
+          "ms": 5591,
+          "finals": 1,
+          "partials": 1,
+          "timedOut": false
+        }
+      ]
     }
   ]
 }
