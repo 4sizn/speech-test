@@ -31,7 +31,13 @@ export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
       label: 'WebSocket URL',
       default: 'ws://localhost:8765',
       placeholder: 'ws://localhost:8765 또는 wss://...',
-      hint: '온프레미스 백엔드: server/realtime_asr_server.py --engine faster-whisper (기본 포트 8765) — 실시간 partial/final 출력',
+      hint:
+        '포트가 곧 엔진이다 — 같은 프로토콜이라 URL만 바꾸면 백엔드가 바뀐다. ' +
+        '⚙ 8765 = faster-whisper 재전사(기본·권장) · 한국어 CER 14.5%, 마이크 10.4% / ' +
+        '⚙ 8768 = whisper_streaming 증분(긴 연속 발화용) · 파일 18.4%, 짧은 발화나 마이크에는 불리 / ' +
+        '⚙ 8766 = FunASR(중국어 전용 — 한국어 넣으면 중국어 음절로 매핑된다). ' +
+        'SenseVoice(8767)는 이 Provider가 아니라 목록에서 SenseVoice를 고른다. ' +
+        '서버 기동: server/realtime_asr_server.py --engine <엔진> --port <포트>',
     },
     { key: 'apiKey', label: 'API Key', type: 'password', placeholder: '(필요 시)' },
   ];

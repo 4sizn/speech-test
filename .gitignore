@@ -29,3 +29,7 @@ stt-e2e/.local/
 
 # npm 락파일 (이 프로젝트는 bun.lockb 사용 — 락파일은 커밋하지 않는다)
 package-lock.json
+
+# 파이썬 바이트코드 (server/, vendor/)
+__pycache__/
+*.pyc

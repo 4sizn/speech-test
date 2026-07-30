@@ -208,6 +208,12 @@ try {
   const flowing = out.partials.length >= 2;
   const recognized = out.finals.length >= 1;
   console.log(`\n판정: 흐르는 자막 ${flowing ? '✅' : '❌'} · 확정 결과 ${recognized ? '✅' : '❌'}`);
+  if (!flowing && recognized) {
+    console.log(
+      '  ※ 확정분을 증분으로 흘리는 엔진(FunASR·whisper-streaming)은 partial을 보내지 않는다 —',
+      '\n    자막이 확정 줄로 쌓이면 정상이다. 이 경우 "흐르는 자막 ❌"는 결함이 아니다.',
+    );
+  }
   console.log('(정확도는 판단 대상이 아니다 — 브라우저 오디오 전처리로 변형된다. CER은 npm run qa:stt)');
   process.exitCode = flowing && recognized ? 0 : 1;
 } finally {

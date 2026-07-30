@@ -65,6 +65,11 @@ MAX_UTTERANCE_SEC = 15.0
 # whisper-streaming: process_iter를 부르기 전에 모을 최소 오디오. 250ms 프레임마다 부르면
 # 호출마다 전사가 돌아 비용이 과하다 — UFAL 서버 기본값(1s)과 같게 둔다.
 WSTREAM_MIN_CHUNK_SEC = 1.0
+# whisper-streaming: 이만큼 무음이 이어지면 스트림을 끊고 프로세서를 새로 만든다.
+# 0.9s(SILENCE_FINALIZE_SEC)보다 길게 둔다 — 문장 사이 쉼에도 걸리면 짧은 발화가 확정 기회를
+# 못 얻어 결과가 비었다(실측 마이크 CER 70.3%). 반대로 아예 끊지 않으면 UFAL의 세그먼트 트리밍이
+# 무음 입력에서 작동하지 않아 버퍼가 무한히 자란다(실측 22초, 전사 8초/회로 실시간 불가).
+WSTREAM_RESET_SILENCE_SEC = 2.0
 
 
 def rms(pcm: np.ndarray) -> float:
@@ -346,8 +351,24 @@ class Session:
         쌓이고 다음 호출에 함께 들어가므로 오디오는 유실되지 않는다.
         """
         self.ws_pending = np.concatenate([self.ws_pending, pcm])
+
+        # 무음이 충분히 이어지면 스트림을 끊는다.
+        # **UFAL의 buffer_trimming("segment", 15)를 믿을 수 없다** — Whisper가 세그먼트를 반환할
+        # 때만 자르므로 무음이 섞인 마이크 입력에서는 자를 지점이 없어 버퍼가 무한히 자란다
+        # (실측: 마이크로 1분 말했을 때 22초까지 커지고, 전사가 8초씩 걸려 완전히 밀렸다).
+        # 임계를 SILENCE_FINALIZE_SEC(0.9s)보다 길게 두는 이유: 0.9s는 문장 사이 쉼에도 걸려
+        # 짧은 발화가 확정 기회를 못 얻는다(그렇게 했을 때 마이크 CER 70.3%).
+        if self.had_speech and self.silence_sec >= WSTREAM_RESET_SILENCE_SEC:
+            await self.finalize()
+            return
+
         if len(self.ws_pending) < SAMPLE_RATE * WSTREAM_MIN_CHUNK_SEC:
             return
+        if self.infer_lock.locked():
+            # 앞선 전사가 진행 중 — pending에 쌓아두고 다음 기회에 함께 넣는다.
+            # 이걸 빼면 대기가 무한히 쌓여 마이크가 실시간을 못 따라간다.
+            return
+
         chunk, self.ws_pending = self.ws_pending, np.zeros(0, dtype=np.float32)
         self.ws_proc.insert_audio_chunk(chunk)
         _beg, _end, text = await self.infer(self.ws_proc.process_iter)
@@ -416,7 +437,7 @@ class Session:
 
     async def finalize(self):
         if self.kind == "whisper-streaming":
-            # 스트림 종료(stop) 시에만 호출된다 — 무음 경계로는 자르지 않는다(on_pcm_wstream 참고)
+            # 호출 지점: stop(스트림 종료) + 무음 WSTREAM_RESET_SILENCE_SEC 경과(버퍼 폭주 방지)
             if len(self.ws_pending):
                 self.ws_proc.insert_audio_chunk(self.ws_pending)
                 self.ws_pending = np.zeros(0, dtype=np.float32)
@@ -520,7 +541,17 @@ async def main():
         log.info("워밍업 추론…")
         engine.warmup()
 
-    async with websockets.serve(lambda ws: handle(ws, engine, args.engine), args.host, port, max_size=2**22):
+    # ping_timeout을 늘린다 — 기본 20s는 CPU 추론 서버에 짧다. 전사가 코어를 점유하는 동안
+    # 이벤트 루프가 스케줄을 못 받아 ping 응답이 밀리면 서버가 멀쩡한 연결을 끊는다
+    # (실측: whisper-streaming 마이크에서 "keepalive ping timeout"으로 40초에 끊겨 결과 0건).
+    async with websockets.serve(
+        lambda ws: handle(ws, engine, args.engine),
+        args.host,
+        port,
+        max_size=2**22,
+        ping_interval=20,
+        ping_timeout=120,
+    ):
         log.info("서버 시작: ws://%s:%d (engine=%s)", args.host, port, args.engine)
         await asyncio.Future()
 
