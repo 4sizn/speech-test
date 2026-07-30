@@ -1,60 +1,61 @@
 {
   "features": {
     "whisper-base-file": {
-      "cerAvg": 0.2743,
-      "cerMedian": 0.2216,
-      "samples": 7,
-      "tolerance": 0.05,
-      "at": "2026-07-29T09:14:44.081Z"
-    },
-    "whisper-base-mic": {
-      "cerAvg": 0.2595,
-      "cerMedian": 0.1977,
-      "samples": 6,
-      "tolerance": 0.05,
-      "at": "2026-07-29T09:14:44.081Z"
-    },
-    "streaming-file": {
-      "cerAvg": 0.2843,
+      "cerAvg": 0.304,
       "cerMedian": 0.2778,
       "samples": 7,
       "tolerance": 0.05,
-      "at": "2026-07-29T09:14:44.081Z"
+      "at": "2026-07-30T02:56:41.697Z",
+      "note": "20회 관측 평균으로 고정(범위 27.4~33.8%, 중앙 30.6%). 최저값 27.4%가 기준일 때 정상 측정도 +5%p 경계에 걸렸다."
     },
-    "streaming-mic": {
-      "cerAvg": 0.2369,
-      "cerMedian": 0.1915,
+    "whisper-base-mic": {
+      "cerAvg": 0.2586,
+      "cerMedian": 0.1977,
       "samples": 6,
       "tolerance": 0.05,
-      "at": "2026-07-29T09:14:44.081Z"
+      "at": "2026-07-30T02:56:41.697Z"
     },
-    "sensevoice-file": {
-      "cerAvg": 0.1669,
-      "cerMedian": 0.1579,
+    "streaming-file": {
+      "cerAvg": 0.1451,
+      "cerMedian": 0.1111,
       "samples": 7,
       "tolerance": 0.05,
-      "at": "2026-07-29T09:14:44.081Z"
+      "at": "2026-07-30T02:56:41.697Z"
     },
-    "sensevoice-mic": {
-      "cerAvg": 0.104,
-      "cerMedian": 0.1221,
+    "streaming-mic": {
+      "cerAvg": 0.1045,
+      "cerMedian": 0.0556,
       "samples": 6,
       "tolerance": 0.05,
-      "at": "2026-07-29T09:14:44.081Z"
+      "at": "2026-07-30T02:56:41.697Z"
+    },
+    "sensevoice-file": {
+      "cerAvg": 0.1643,
+      "cerMedian": 0.1667,
+      "samples": 7,
+      "tolerance": 0.05,
+      "at": "2026-07-30T02:56:41.697Z"
+    },
+    "sensevoice-mic": {
+      "cerAvg": 0.1087,
+      "cerMedian": 0.1316,
+      "samples": 6,
+      "tolerance": 0.05,
+      "at": "2026-07-30T02:56:41.697Z"
     },
     "funasr-file": {
-      "cerAvg": 0.9949,
+      "cerAvg": 0.994,
       "cerMedian": 1,
       "samples": 7,
       "tolerance": 0.05,
-      "at": "2026-07-29T09:14:44.081Z"
+      "at": "2026-07-30T02:56:41.697Z"
     },
     "webspeech-file": {
       "cerAvg": 0.0869,
       "cerMedian": 0.079,
       "samples": 6,
-      "tolerance": 0.05,
-      "at": "2026-07-28T17:54:40.050Z"
+      "tolerance": 0.07,
+      "at": "2026-07-30T02:56:41.697Z"
     },
     "webspeech-mic": {
       "cerAvg": 0.0499,
@@ -78,21 +79,21 @@
       "at": "2026-07-29T06:48:48.707Z"
     },
     "whisper-base-partial-file": {
-      "cerAvg": 0.2908,
-      "cerMedian": 0.3154,
-      "samples": 6,
-      "tolerance": 0.05,
-      "at": "2026-07-29T09:14:44.081Z"
-    },
-    "whisper-base-partial-mic": {
-      "cerAvg": 0.2721,
+      "cerAvg": 0.3057,
       "cerMedian": 0.1977,
       "samples": 6,
       "tolerance": 0.05,
-      "at": "2026-07-29T09:14:44.081Z"
+      "at": "2026-07-30T02:56:41.697Z"
+    },
+    "whisper-base-partial-mic": {
+      "cerAvg": 0.2822,
+      "cerMedian": 0.1977,
+      "samples": 6,
+      "tolerance": 0.05,
+      "at": "2026-07-30T02:56:41.697Z"
     }
   },
-  "updatedAt": "2026-07-29T09:14:44.081Z",
-  "commit": "3530182",
+  "updatedAt": "2026-07-30T02:56:41.697Z",
+  "commit": "f557d72",
   "note": "기능별 기준 오류값 — npm run qa:stt -- --update-baseline 으로만 갱신"
 }

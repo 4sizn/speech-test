@@ -13,11 +13,14 @@
 
 엔진:
   faster-whisper : 발화 버퍼를 주기 재전사해 partial, RMS 무음 경계에서 final. (ko/en/ja/zh …)
+                   기본 small — 한국어 CER 13.4% · 띄어쓰기(WER) 44.2%로 SenseVoice보다 낫다.
+                   정확도 우선이면 --model medium (CER 11.6%, 단 RTF 0.93으로 실시간 빡빡)
   funasr         : paraformer-zh-streaming 증분 디코딩(진짜 스트리밍). (zh 전용)
   sensevoice     : SenseVoiceSmall 재전사 방식 — 호출당 고정비용 ≈1s(CPU)라 partial 주기 1.2s. (ko/ja/en/zh/yue)
 
 사용:
-  python3 realtime_asr_server.py --engine faster-whisper --model base --port 8765
+  python3 realtime_asr_server.py --engine faster-whisper --port 8765            # 기본 small
+  python3 realtime_asr_server.py --engine faster-whisper --model medium --port 8765
   python3 realtime_asr_server.py --engine funasr --port 8766
   python3 realtime_asr_server.py --engine sensevoice --port 8767
 
@@ -60,7 +63,23 @@ def rms(pcm: np.ndarray) -> float:
 
 # ── 엔진 어댑터 ─────────────────────────────────────────────────────────
 class FasterWhisperEngine:
-    """발화 버퍼 재전사 방식 — partial은 현재 발화 전체를 다시 전사한 스냅샷."""
+    """
+    발화 버퍼 재전사 방식 — partial은 현재 발화 전체를 다시 전사한 스냅샷.
+
+    ── 기본 모델을 small로 두는 근거 (AI Hub 상담음성 8샘플 · beam_size=1 · 이 서버와 같은 옵션) ──
+      모델      CER     WER(어절)   RTF
+      base     21.4%    50.6%      0.13
+      small    13.4%    44.2%      0.36   ← 기본
+      medium   11.6%    40.3%      0.93
+      (비교) SenseVoice 16.4%  65.3%
+    small이 SenseVoice보다 정확하고 **띄어쓰기가 크게 낫다**(WER 44% vs 65%). Whisper 계열은
+    문장부호·띄어쓰기를 자연히 넣는데 SenseVoice는 거의 넣지 않고 간헐적으로 음절을 분리한다
+    ("등록해볼까 하 하고요"). 그 문제는 후처리로 고칠 수 없었다 — 한국어 띄어쓰기 교정기
+    (kiwipiepy)를 붙이면 오인식 단어를 더 쪼개 WER이 65%→74%로 악화됐다.
+
+    medium은 더 정확하지만 RTF 0.93이라 partial 재전사(주기 0.6s)에서 백로그가 생긴다
+    — 정확도 우선이면 `--model medium`으로 옵트인한다.
+    """
 
     def __init__(self, model_size: str):
         from faster_whisper import WhisperModel
@@ -296,7 +315,8 @@ async def main():
     ap = argparse.ArgumentParser(description="실시간 STT WebSocket 서버")
     ap.add_argument("--engine", choices=["faster-whisper", "funasr", "sensevoice"], default="faster-whisper")
     ap.add_argument(
-        "--model", default=None, help="faster-whisper: tiny/base/small… · funasr/sensevoice: 모델명"
+        "--model", default=None,
+        help="faster-whisper: tiny/base/small(기본)/medium/large-v3 · funasr/sensevoice: 모델명"
     )
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=None)
@@ -315,7 +335,7 @@ async def main():
         engine = SenseVoiceEngine(args.model or "iic/SenseVoiceSmall", args.ncpu)
         port = args.port or 8767
     else:
-        engine = FasterWhisperEngine(args.model or "base")
+        engine = FasterWhisperEngine(args.model or "small")
         port = args.port or 8765
 
     if hasattr(engine, "warmup"):

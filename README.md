@@ -125,8 +125,26 @@ stt-e2e/.local/                   원문 상세·브라우저 프로필·이벤�
 - 마이크 모드는 `RECOGNITION_STARTED`(캡처 준비 완료) 뒤에 재생을 시작해 앞부분 손실을 없앴다.
   이전에는 `getUserMedia` 시점에 바로 재생해, 부하가 클 때 첫 어절이 잘려 CER이 13%p까지 튀었다
   (streaming-mic 29%→42%, `"안녕하세요. 대박교육 상담원 홍길동입니다."` → `"안녕하세요."`).
-- 모델 정확도 비교(full 프로파일 실측): **small 15.7% · base 27.4% · tiny 48.8%**.
+- 클라이언트 Whisper 모델 비교(full 프로파일 실측): **small 15.7% · base 27.4% · tiny 48.8%**.
   small이 가장 정확하지만 지연이 base의 2.6배(30.9s/샘플)라 실시간 자막에는 부적합하다.
+- **온프레미스 엔진 비교(같은 8샘플 · 서버와 같은 옵션 beam_size=1)** — 한국어에서는 띄어쓰기까지
+  보려면 CER만으로는 부족하다. 어절 단위 WER을 함께 재야 한다:
+
+  | 엔진 | CER | WER(어절) | RTF |
+  |---|---|---|---|
+  | faster-whisper base | 21.4% | 50.6% | 0.13 |
+  | **faster-whisper small**(기본) | **13.4%** | **44.2%** | 0.36 |
+  | faster-whisper medium | 11.6% | 40.3% | 0.93 |
+  | SenseVoice | 16.4% | **65.3%** | ≈1.0 |
+
+  SenseVoice는 CER은 준수하지만 **WER이 65%**다 — 문장부호를 거의 넣지 않고 간헐적으로 음절을
+  분리한다("등록해볼까 하 하고요"). 후처리로는 못 고쳤다: 한국어 띄어쓰기 교정기(kiwipiepy)를
+  붙이면 오인식 단어를 더 쪼개 WER이 74%로 **악화**되고("학습시"→"학습 시", "다국"→"다 국"),
+  붙이는 방향만 채택해도 64.4%(노이즈 수준)에 새 오류를 만든다("안녕하세요 대"→"안녕하세요대").
+  → 띄어쓰기는 후처리 문제가 아니라 **인식 정확도 문제**다. 엔진을 바꾸는 것이 답이었다.
+  QA 실측: streaming-file 28.4%→**14.5%**, streaming-mic 23.7%→**10.4%**(둘 다 SenseVoice보다 낫다).
+- **CER은 공백을 무시한다**(`normalizeForCer`가 한글/영문/숫자만 남긴다) → 띄어쓰기 품질은 QA
+  게이트에 잡히지 않는다. 띄어쓰기가 문제일 때는 WER을 따로 재라.
 
 ## 아키텍처
 
@@ -211,12 +229,14 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt            # faster-whisper 엔진
 .venv/bin/pip install -r requirements-funasr.txt     # (선택) FunASR·SenseVoice 엔진 — torch 포함, 용량 큼
 
-.venv/bin/python realtime_asr_server.py --engine faster-whisper --model base  # ws://localhost:8765 · ko/en/ja/zh…
+.venv/bin/python realtime_asr_server.py --engine faster-whisper              # ws://localhost:8765 · ko/en/ja/zh… (기본 small)
 .venv/bin/python realtime_asr_server.py --engine funasr                       # ws://localhost:8766 · 중국어 전용
 .venv/bin/python realtime_asr_server.py --engine sensevoice                   # ws://localhost:8767 · ko/ja/en/zh/yue
 ```
 
 - faster-whisper: 발화 버퍼를 0.6s 주기로 재전사해 partial, RMS 무음 0.9s에서 final.
+  **기본 모델은 small** — 한국어에서 SenseVoice보다 정확하고 띄어쓰기가 크게 낫다(근거는 아래 표).
+  정확도를 더 원하면 `--model medium`(CER 11.6%)이지만 RTF 0.93이라 partial 재전사가 밀린다.
 - FunASR: paraformer 스트리밍의 600ms 청크 증분 디코딩(진짜 스트리밍) — 부분 결과가 누적된다.
   기본 모델은 non-large(CPU에서 rtf<1 실시간). large(`--model paraformer-zh-streaming`)는 정확도가
   높지만 CPU에서 rtf≈2로 백로그가 쌓여 실시간 불가 — GPU 서버에서만 권장.
