@@ -18,6 +18,22 @@ interface StreamingConfig extends ProviderConfig {
  *    아래는 "16k Int16 PCM 바이너리 전송 → {text,isFinal} JSON 수신"의 일반 골자이며,
  *    #onOpen / #send / #onMessage 를 실제 스펙에 맞춰 조정해야 한다(TODO).
  */
+/**
+ * 엔드포인트 → 사람이 읽는 엔진 이름 / 서버 기동 인자.
+ * 연결 실패는 대개 "그 포트에 서버가 안 떠 있다"이므로, 에러 메시지에서 바로 명령을 알려준다.
+ * configSchema의 select 옵션과 짝을 이룬다 — 옵션을 추가하면 여기도 함께 채운다.
+ */
+const ENGINE_BY_ENDPOINT: Record<string, string> = {
+  'ws://localhost:8765': 'faster-whisper',
+  'ws://localhost:8766': 'FunASR',
+  'ws://localhost:8768': 'whisper_streaming',
+};
+const SERVE_ARGS_BY_ENDPOINT: Record<string, string> = {
+  'ws://localhost:8765': '--engine faster-whisper --port 8765',
+  'ws://localhost:8766': '--engine funasr --port 8766',
+  'ws://localhost:8768': '--engine whisper-streaming --port 8768',
+};
+
 export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
   // FunAsrProvider가 상속해 재선언할 수 있도록 리터럴이 아닌 string으로 선언
   static override readonly id: string = 'streaming';
@@ -27,17 +43,25 @@ export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
   static override readonly locations: readonly RuntimeLocation[] = ['remote-onpremise', 'remote-cloud'];
   static override readonly configSchema: readonly ConfigField[] = [
     {
+      /**
+       * 백엔드 선택 — 포트를 손으로 입력하면 오타·미기동 서버로 이어져 "웹소켓 에러"만 보게 된다.
+       * 이 페이지는 엔진 비교용 테스트 콘솔이므로 동봉 서버의 고정 조합만 고르게 한다
+       * (임의 엔드포인트가 필요하면 이 목록에 추가하는 것이 맞다 — 각 항목이 곧 기동 명령이다).
+       */
       key: 'wsEndpoint',
-      label: 'WebSocket URL',
+      label: '백엔드 엔진 (WebSocket)',
+      type: 'select',
       default: 'ws://localhost:8765',
-      placeholder: 'ws://localhost:8765 또는 wss://...',
+      options: [
+        { value: 'ws://localhost:8765', label: '8765 · faster-whisper 재전사 — 한국어 권장 (CER 14.5% · 마이크 10.4%)' },
+        { value: 'ws://localhost:8768', label: '8768 · whisper_streaming 증분 — 긴 연속 발화용 (파일 18.4% · 짧은 발화엔 불리)' },
+        { value: 'ws://localhost:8766', label: '8766 · FunASR paraformer — ⚠ 중국어 전용(한국어는 중국어 음절로 매핑)' },
+      ],
       hint:
-        '포트가 곧 엔진이다 — 같은 프로토콜이라 URL만 바꾸면 백엔드가 바뀐다. ' +
-        '⚙ 8765 = faster-whisper 재전사(기본·권장) · 한국어 CER 14.5%, 마이크 10.4% / ' +
-        '⚙ 8768 = whisper_streaming 증분(긴 연속 발화용) · 파일 18.4%, 짧은 발화나 마이크에는 불리 / ' +
-        '⚙ 8766 = FunASR(중국어 전용 — 한국어 넣으면 중국어 음절로 매핑된다). ' +
-        'SenseVoice(8767)는 이 Provider가 아니라 목록에서 SenseVoice를 고른다. ' +
-        '서버 기동: server/realtime_asr_server.py --engine <엔진> --port <포트>',
+        '고른 포트에 해당 엔진 서버가 떠 있어야 한다 — 안 떠 있으면 연결 실패로 끝난다. ' +
+        '기동: cd server && .venv/bin/python realtime_asr_server.py --engine <faster-whisper|whisper-streaming|funasr> --port <포트>. ' +
+        'SenseVoice(8767)는 이 Provider가 아니라 위 Provider 목록에서 SenseVoice를 고른다. ' +
+        '두 엔진을 동시에 띄우면 CPU를 다투어 양쪽 정확도가 함께 떨어진다 — 비교할 때는 하나만 켜라.',
     },
     { key: 'apiKey', label: 'API Key', type: 'password', placeholder: '(필요 시)' },
   ];
@@ -55,13 +79,36 @@ export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
     if (!input.stream) throw new Error('PCM 스트림이 없습니다 (파일/마이크 캡처 실패)');
     this._active = true;
 
-    this.#ws = new WebSocket(this.config.wsEndpoint);
+    const endpoint = this.config.wsEndpoint;
+    this.#ws = new WebSocket(endpoint);
     this.#ws.binaryType = 'arraybuffer';
-    this.#ws.onopen = () => this.#onOpen(input.lang);
     this.#ws.onmessage = (e) => this.#onMessage(e);
-    this.#ws.onerror = () => this._sink?.error(new Error('WebSocket 에러'));
-    this.#ws.onclose = () => {
-      if (this._active) this._sink?.system(SystemEvent.STATUS, { message: 'WebSocket 종료됨' });
+    // 연결이 열리기 전에 끊기면 "서버가 안 떠 있다"가 압도적으로 흔한 원인이다.
+    // 'WebSocket 에러' 한 줄만 띄우면 사용자가 무엇을 해야 할지 알 수 없어, 어느 포트에
+    // 어떤 엔진을 띄워야 하는지까지 알려준다(실제로 8768을 안 띄운 채 고르고 헤맨 사례가 있었다).
+    let opened = false;
+    const engineHint = ENGINE_BY_ENDPOINT[endpoint] ?? '해당 엔진';
+    this.#ws.onerror = () => {
+      this._sink?.error(
+        new Error(
+          opened
+            ? `WebSocket 통신 오류 (${endpoint})`
+            : `${endpoint} 에 연결하지 못했습니다 — ${engineHint} 서버가 떠 있는지 확인하세요. ` +
+              `기동: cd server && .venv/bin/python realtime_asr_server.py ${SERVE_ARGS_BY_ENDPOINT[endpoint] ?? '--engine <엔진> --port <포트>'}`,
+        ),
+      );
+    };
+    this.#ws.onopen = () => {
+      opened = true;
+      this.#onOpen(input.lang);
+    };
+    this.#ws.onclose = (e) => {
+      if (!this._active) return;
+      this._sink?.system(SystemEvent.STATUS, {
+        message: opened ? 'WebSocket 종료됨' : `연결 실패 (${endpoint}) — 서버 미기동으로 보입니다`,
+        level: opened ? undefined : 'warn',
+      });
+      void e;
     };
 
     // PCM 캡처 → 청크 전송
