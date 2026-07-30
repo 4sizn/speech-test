@@ -1,0 +1,7 @@
+# whisper-streaming 엔진 (--engine whisper-streaming) 전용 추가 의존성
+#
+# vendor/whisper_online.py(UFAL whisper_streaming, MIT)가 모듈 상단에서 librosa·soundfile을
+# import한다(파일 로딩 헬퍼용). 우리는 PCM 배열을 직접 넣어 그 헬퍼를 쓰지 않지만 import는
+# 필요하다. 이 엔진을 안 쓰면 설치하지 않아도 된다 — 기본 엔진(faster-whisper)은 무관하다.
+librosa
+soundfile

@@ -228,10 +228,12 @@ cd server
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt            # faster-whisper 엔진
 .venv/bin/pip install -r requirements-funasr.txt     # (선택) FunASR·SenseVoice 엔진 — torch 포함, 용량 큼
+.venv/bin/pip install -r requirements-wstream.txt    # (선택) whisper-streaming 엔진 — librosa·soundfile
 
 .venv/bin/python realtime_asr_server.py --engine faster-whisper              # ws://localhost:8765 · ko/en/ja/zh… (기본 small)
 .venv/bin/python realtime_asr_server.py --engine funasr                       # ws://localhost:8766 · 중국어 전용
 .venv/bin/python realtime_asr_server.py --engine sensevoice                   # ws://localhost:8767 · ko/ja/en/zh/yue
+.venv/bin/python realtime_asr_server.py --engine whisper-streaming            # ws://localhost:8768 · 긴 연속 발화용
 ```
 
 - faster-whisper: 발화 버퍼를 0.6s 주기로 재전사해 partial, RMS 무음 0.9s에서 final.
@@ -250,6 +252,33 @@ python3 -m venv .venv
   기본 모델은 non-large(CPU에서 rtf<1 실시간). large(`--model paraformer-zh-streaming`)는 정확도가
   높지만 CPU에서 rtf≈2로 백로그가 쌓여 실시간 불가 — GPU 서버에서만 권장.
   ⚠ 중국어 단일 언어 모델(vocab8404)이라 **한국어를 넣으면 중국어 음절로 강제 매핑**된다 → 한국어는 SenseVoice/faster-whisper.
+- **UFAL whisper_streaming도 넣어봤다 — 우리 조건에서는 재전사가 더 정확했다**
+  (`--engine whisper-streaming`, 포트 8768, `server/vendor/whisper_online.py` MIT).
+  단어 타임스탬프로 확정 지점을 알아 **오디오 버퍼를 잘라내므로** 발화가 길어도 전사 비용이
+  일정하다는 것이 이 라이브러리의 강점이다(우리 `stabilize`는 텍스트 접두만 보고 버퍼는 그대로 둔다).
+
+  | | 재전사 + LocalAgreement | UFAL whisper_streaming |
+  |---|---|---|
+  | 파일 | **14.5%** | 18.4% |
+  | 마이크 | **10.4%** | 26.9% |
+
+  이유: UFAL의 LocalAgreement는 확정을 **지연**시켜 안정성을 얻는데, 우리 QA 데이터는 2~8초짜리
+  짧은 상담 발화라 "2회 연속 일치"를 볼 기회가 적다. 재전사는 발화 전체를 매번 다시 인식하니
+  짧은 발화에서 최대 정확도가 난다. UFAL의 강점(긴 발화 비용 일정)은 `MAX_UTTERANCE_SEC` 15s로
+  이미 우회했다. → **강연·회의처럼 긴 연속 발화라면 UFAL이 유리하다.** 그 용도면 이 엔진을 쓰라.
+
+  통합할 때 밟은 함정 세 개(코드 주석에도 남겼다):
+  ① `load_model`이 `device="cuda"` 하드코딩 → CPU/int8 오버라이드.
+  ② `transcribe`의 `beam_size=5`가 하드코딩 → kwargs로 덮으면 `TypeError`. 메서드를 오버라이드하되
+     **`word_timestamps=True`는 유지**해야 한다(버퍼 트리밍의 근거).
+  ③ **`finish()`는 오디오를 전사하지 않는다** — `transcript_buffer`만 비운다. 마지막 청크를 넣고
+     바로 `finish()`를 부르면 발화 끝이 날아간다(CER 47.8%). `process_iter()`를 한 번 더 불러야 한다.
+  ④ **무음 경계로 잘라 프로세서를 리셋하면 안 된다** — UFAL은 연속 스트림을 가정하고 세그먼트
+     경계를 내부에서 관리한다. 발화마다 리셋했을 때 짧은 발화가 통째로 비어 마이크 CER이 70.3%
+     (중앙값 100%)였다. 연속 스트림으로 바꾸자 26.9%가 됐다.
+
+  QA 상시 항목에는 넣지 않았다 — faster-whisper와 각각 small 모델을 물고 돌면 CPU를 다투어
+  **다른 기능 측정까지 망친다**(실측: 두 서버 동시 기동 시 streaming-mic 10.4%→42.2%).
 - **한국어 증분 스트리밍 모델은 찾지 못했다**(2026-07 조사·실측, 같은 8샘플):
   `sherpa-onnx-streaming-zipformer-korean-2024-06-16`(KsponSpeech, 진짜 online transducer)은
   CER 72.8% · WER 100% — **공백을 아예 출력하지 않는다**(모델 자체 샘플도

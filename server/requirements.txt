@@ -2,3 +2,5 @@
 websockets>=12
 numpy
 faster-whisper>=1.0
+
+# whisper-streaming 엔진을 쓰려면 requirements-wstream.txt도 설치 (librosa·soundfile)

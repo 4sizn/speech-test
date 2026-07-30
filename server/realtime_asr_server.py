@@ -17,12 +17,15 @@
                    정확도 우선이면 --model medium (CER 11.6%, 단 RTF 0.93으로 실시간 빡빡)
   funasr         : paraformer-zh-streaming 증분 디코딩(진짜 스트리밍). (zh 전용)
   sensevoice     : SenseVoiceSmall 재전사 방식 — 호출당 고정비용 ≈1s(CPU)라 partial 주기 1.2s. (ko/ja/en/zh/yue)
+  whisper-streaming : UFAL whisper_streaming(vendor/, MIT) — 단어 타임스탬프로 확정 지점을 알아
+                   오디오 버퍼를 잘라내는 진짜 증분 처리. 발화가 길어도 전사 비용이 일정하다.
 
 사용:
   python3 realtime_asr_server.py --engine faster-whisper --port 8765            # 기본 small
   python3 realtime_asr_server.py --engine faster-whisper --model medium --port 8765
   python3 realtime_asr_server.py --engine funasr --port 8766
   python3 realtime_asr_server.py --engine sensevoice --port 8767
+  python3 realtime_asr_server.py --engine whisper-streaming --port 8768
 
 모델은 최초 1회 server/models/ 아래로 내려받아 자체 관리한다(이후 오프라인 동작).
 """
@@ -59,6 +62,9 @@ PARTIAL_INTERVAL_SEC = 0.6  # partial 재전사 기본 주기 — 엔진이 PART
 # 클라이언트 종료 뒤에 도착해 유실된다(실측: 35초 파일에서 final 0건 → CER 100%).
 # 15s면 ≈5s로 줄어 여유가 생기고, partial 스냅샷 상한(최근 15초)과도 맞는다.
 MAX_UTTERANCE_SEC = 15.0
+# whisper-streaming: process_iter를 부르기 전에 모을 최소 오디오. 250ms 프레임마다 부르면
+# 호출마다 전사가 돌아 비용이 과하다 — UFAL 서버 기본값(1s)과 같게 둔다.
+WSTREAM_MIN_CHUNK_SEC = 1.0
 
 
 def rms(pcm: np.ndarray) -> float:
@@ -111,6 +117,76 @@ class FasterWhisperEngine:
         # 첫 호출은 커널 초기화로 느리다 — 무음으로 미리 태워 첫 발화 확정이 밀리지 않게 한다
         # (SenseVoice와 같은 이유. 확정이 늦으면 클라이언트 종료 뒤에 도착해 유실된다.)
         self.transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32), None)
+
+
+class WhisperStreamingEngine:
+    """
+    UFAL whisper_streaming(`vendor/whisper_online.py`, MIT) 기반 진짜 스트리밍 처리.
+
+    ── 우리 재전사 방식과 무엇이 다른가 ──
+    둘 다 LocalAgreement(연속 재전사가 일치한 접두를 확정)를 쓰지만, 우리 `Session.stabilize`는
+    **텍스트 어절 접두**만 보고 오디오 버퍼는 그대로 둔다 → 발화가 길어지면 매 주기 전사 비용이
+    계속 커진다(상한 15s). UFAL은 `word_timestamps=True`로 **확정 지점의 시각**을 알기 때문에
+    그만큼 오디오 버퍼를 잘라낸다 → 발화가 길어도 전사 비용이 일정하게 유지된다.
+    긴 발화에서 확정이 밀려 유실되던 문제(MAX_UTTERANCE_SEC 참고)의 근본 해법이다.
+
+    `OnlineASRProcessor`는 상태를 가지므로 **세션마다 하나**를 만든다(엔진은 모델만 공유).
+    """
+
+    # 이 엔진은 재전사 루프를 쓰지 않는다 — 오디오를 넣는 즉시 확정분이 나온다
+    INCREMENTAL = True
+
+    def __init__(self, model_size: str, beam_size: int):
+        import sys as _sys
+
+        _sys.path.insert(0, str(Path(__file__).parent / "vendor"))
+        from whisper_online import FasterWhisperASR, OnlineASRProcessor  # noqa: E402
+
+        self._processor_cls = OnlineASRProcessor
+
+        class CpuFasterWhisperASR(FasterWhisperASR):
+            """
+            업스트림을 CPU에서 쓰기 위한 두 곳의 오버라이드.
+              - load_model: 업스트림은 device="cuda" 하드코딩이다.
+              - transcribe: beam_size=5가 하드코딩돼 kwargs로 덮을 수 없다(중복 인자 TypeError).
+                `word_timestamps=True`는 반드시 유지해야 한다 — 확정 지점의 시각을 알아 오디오
+                버퍼를 잘라내는 것이 이 라이브러리의 핵심이다.
+            """
+
+            def load_model(self, modelsize=None, cache_dir=None, model_dir=None):
+                from faster_whisper import WhisperModel
+
+                return WhisperModel(
+                    modelsize, device="cpu", compute_type="int8", download_root=cache_dir
+                )
+
+            def transcribe(self, audio, init_prompt=""):
+                segments, _info = self.model.transcribe(
+                    audio,
+                    language=self.original_language,
+                    initial_prompt=init_prompt,
+                    beam_size=beam_size,
+                    word_timestamps=True,
+                    condition_on_previous_text=True,
+                    **self.transcribe_kargs,
+                )
+                return list(segments)
+
+        log.info("whisper_streaming 모델 로드: %s (beam=%d)", model_size, beam_size)
+        self.asr = CpuFasterWhisperASR(
+            lan="ko", modelsize=model_size, cache_dir=str(MODELS_DIR / "faster-whisper")
+        )
+        log.info("모델 준비 완료")
+
+    def new_processor(self):
+        # buffer_trimming=("segment", 15): 문장 토크나이저 없이 세그먼트 경계에서 15s 상한으로 자른다
+        return self._processor_cls(self.asr, buffer_trimming=("segment", 15))
+
+    def warmup(self) -> None:
+        p = self.new_processor()
+        p.insert_audio_chunk(np.zeros(SAMPLE_RATE, dtype=np.float32))
+        p.process_iter()
+        p.finish()
 
 
 class SenseVoiceEngine:
@@ -208,6 +284,9 @@ class Session:
         self.prev_snapshot = ""
         self.fun_state = engine.new_stream() if engine_kind == "funasr" else None
         self.fun_pending = np.zeros(0, dtype=np.float32)
+        # whisper-streaming: 프로세서가 상태(오디오 버퍼·확정 접두)를 가지므로 세션마다 하나
+        self.ws_proc = engine.new_processor() if engine_kind == "whisper-streaming" else None
+        self.ws_pending = np.zeros(0, dtype=np.float32)
         # 엔진이 자기 추론 비용에 맞는 주기를 선언하면 그걸 쓴다(SenseVoice=1.2s)
         self.partial_interval = getattr(engine, "PARTIAL_INTERVAL_SEC", PARTIAL_INTERVAL_SEC)
         # 이 세션의 추론이 진행 중인지 — partial_loop이 locked()로 보고 그 주기를 건너뛴다.
@@ -240,6 +319,9 @@ class Session:
         if self.kind == "funasr":
             await self.on_pcm_funasr(pcm)
             return
+        if self.kind == "whisper-streaming":
+            await self.on_pcm_wstream(pcm)
+            return
 
         # faster-whisper: 발화 중이면 버퍼 누적, 무음 경계에서 확정
         if self.had_speech:
@@ -248,6 +330,30 @@ class Session:
             self.silence_sec >= SILENCE_FINALIZE_SEC or len(self.buf) >= SAMPLE_RATE * MAX_UTTERANCE_SEC
         ):
             await self.finalize()
+
+    async def on_pcm_wstream(self, pcm: np.ndarray):
+        """
+        whisper_streaming 증분 처리.
+
+        **무음 경계로 발화를 자르지 않는다.** UFAL은 연속 스트림을 가정하고 세그먼트 경계와 버퍼
+        트리밍을 내부에서 관리한다 — 우리가 무음 0.9s마다 프로세서를 리셋하면 짧은 발화(2~3s)는
+        LocalAgreement가 "2회 연속 일치"를 볼 기회조차 없이 버려진다(실측: 그렇게 했을 때
+        wstream-mic CER 70.3% · 중앙값 100%, 즉 절반이 빈 결과였다).
+        그래서 확정분(process_iter의 반환)을 그대로 final로 흘리고, 리셋은 stop에서만 한다.
+
+        `process_iter()`는 250ms 프레임마다 부르면 호출마다 전사가 돌아 비용이 과하다 →
+        UFAL 서버 기본값과 같이 최소 청크(1s)를 모아 부른다. 추론이 밀리는 동안 ws_pending에
+        쌓이고 다음 호출에 함께 들어가므로 오디오는 유실되지 않는다.
+        """
+        self.ws_pending = np.concatenate([self.ws_pending, pcm])
+        if len(self.ws_pending) < SAMPLE_RATE * WSTREAM_MIN_CHUNK_SEC:
+            return
+        chunk, self.ws_pending = self.ws_pending, np.zeros(0, dtype=np.float32)
+        self.ws_proc.insert_audio_chunk(chunk)
+        _beg, _end, text = await self.infer(self.ws_proc.process_iter)
+        if text and text.strip():
+            # 확정분은 되돌아오지 않는다 → 그대로 확정 자막으로 보낸다(FunASR 증분과 같은 결)
+            await self.send(text.strip(), True)
 
     async def on_pcm_funasr(self, pcm: np.ndarray):
         self.fun_pending = np.concatenate([self.fun_pending, pcm])
@@ -263,7 +369,8 @@ class Session:
 
     # 주기 partial (재전사 엔진 전용 — 현재 발화 버퍼 스냅샷 재전사)
     async def partial_loop(self):
-        if self.kind != "funasr":
+        # funasr·whisper-streaming은 증분 엔진이라 재전사 루프가 필요 없다
+        if self.kind not in ("funasr", "whisper-streaming"):
             while True:
                 await asyncio.sleep(self.partial_interval)
                 if not self.had_speech or len(self.buf) < SAMPLE_RATE // 2:
@@ -308,7 +415,23 @@ class Session:
         return text if text.startswith(self.committed) else self.committed
 
     async def finalize(self):
-        if self.kind == "funasr":
+        if self.kind == "whisper-streaming":
+            # 스트림 종료(stop) 시에만 호출된다 — 무음 경계로는 자르지 않는다(on_pcm_wstream 참고)
+            if len(self.ws_pending):
+                self.ws_proc.insert_audio_chunk(self.ws_pending)
+                self.ws_pending = np.zeros(0, dtype=np.float32)
+                # **finish()는 오디오를 전사하지 않는다** — transcript_buffer에 남은 미확정분만
+                # 비운다(vendor/whisper_online.py:603). 방금 넣은 오디오를 전사하려면 process_iter를
+                # 한 번 더 불러야 한다. 이걸 빼면 발화 끝이 잘렸다(실측 CER 47.8% → 29.5%).
+                _b, _e, more = await self.infer(self.ws_proc.process_iter)
+                if more and more.strip():
+                    await self.send(more.strip(), True)
+            _beg, _end, tail = await self.infer(self.ws_proc.finish)
+            if tail and tail.strip():
+                await self.send(tail.strip(), True)
+            self.ws_proc = self.engine.new_processor()
+            self.ws_pending = np.zeros(0, dtype=np.float32)
+        elif self.kind == "funasr":
             if self.fun_state and (self.fun_state["text"] or len(self.fun_pending)):
                 pad = np.zeros(FunAsrEngine.CHUNK_SAMPLES, dtype=np.float32)
                 tail = np.concatenate([self.fun_pending, pad])[: FunAsrEngine.CHUNK_SAMPLES]
@@ -360,7 +483,11 @@ async def handle(ws, engine, engine_kind: str):
 
 async def main():
     ap = argparse.ArgumentParser(description="실시간 STT WebSocket 서버")
-    ap.add_argument("--engine", choices=["faster-whisper", "funasr", "sensevoice"], default="faster-whisper")
+    ap.add_argument(
+        "--engine",
+        choices=["faster-whisper", "funasr", "sensevoice", "whisper-streaming"],
+        default="faster-whisper",
+    )
     ap.add_argument(
         "--model", default=None,
         help="faster-whisper: tiny/base/small(기본)/medium/large-v3 · funasr/sensevoice: 모델명"
@@ -369,6 +496,7 @@ async def main():
     ap.add_argument("--port", type=int, default=None)
     # 8코어 맥에서 4가 가장 빨랐다(8은 효율코어까지 써서 1.0s → 1.7s로 악화)
     ap.add_argument("--ncpu", type=int, default=4, help="torch CPU 스레드 수 (sensevoice)")
+    ap.add_argument("--beam", type=int, default=1, help="beam size (whisper-streaming)")
     args = ap.parse_args()
 
     import websockets
@@ -381,6 +509,9 @@ async def main():
     elif args.engine == "sensevoice":
         engine = SenseVoiceEngine(args.model or "iic/SenseVoiceSmall", args.ncpu)
         port = args.port or 8767
+    elif args.engine == "whisper-streaming":
+        engine = WhisperStreamingEngine(args.model or "small", args.beam)
+        port = args.port or 8768
     else:
         engine = FasterWhisperEngine(args.model or "small")
         port = args.port or 8765

@@ -235,8 +235,15 @@ export function buildFeatures(profile = 'quick') {
 }
 
 /** 기능이 요구하는 온프레미스 엔진 이름 → 포트 */
+/**
+ * 엔진별 기본 포트. whisper-streaming(8768)은 서버는 지원하되 **QA 상시 항목에는 없다** —
+ * faster-whisper와 각각 small 모델을 물고 돌아 CPU를 다투면 다른 기능 측정까지 망친다
+ * (실측: 두 서버 동시 기동 상태에서 streaming-mic이 10.4%→42.2%로 무너졌다).
+ * 비교가 필요하면 8765를 내리고 wsEndpoint를 8768로 준 임시 기능으로 재라. 측정 근거는 README.
+ */
 export const SERVER_PORTS = {
   'faster-whisper': 8765,
   funasr: 8766,
   sensevoice: 8767,
+  'whisper-streaming': 8768,
 };
