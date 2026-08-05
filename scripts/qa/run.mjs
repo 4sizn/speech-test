@@ -11,7 +11,7 @@
  */
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { spawn, spawnSync, execFileSync } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { createConnection } from 'node:net';
 import puppeteer from 'puppeteer-core';
 import { PROJECT_ROOT, DATASET_ROOT, STT_E2E_LOCAL_DIR, assertNormalizerInSync, loadSamples } from './lib/dataset.mjs';
@@ -20,26 +20,9 @@ import { startQaServer } from './server.mjs';
 import { selectQaVitePort } from './lib/vite-port.mjs';
 import { createQaChromeProfile } from './lib/chrome-profile.mjs';
 import { fasterWhisperCommand, fasterWhisperModelFromArgs } from './lib/server-command.mjs';
-import { parentQaRuntimeCommand, resolveQaNode, viteCommand } from './lib/node-runtime.mjs';
+
 import { writeReport, writeSummary } from './lib/report.mjs';
 import { judge, updateBaseline, sourceHashes } from './lib/gate.mjs';
-
-// npm inherits the shell's PATH and can launch this runner on Node 16. Re-exec
-// before any use of fetch/AbortSignal.timeout so QA fails neither silently nor
-// after a misleading 60-second Vite readiness timeout.
-const qaRuntime = resolveQaNode();
-const reexec = parentQaRuntimeCommand({
-  currentNode: process.execPath,
-  compatibleNode: qaRuntime,
-  script: process.argv[1],
-  args: process.argv.slice(2),
-});
-if (reexec) {
-  const [node, nodeArgs] = reexec;
-  const result = spawnSync(node, nodeArgs, { cwd: process.cwd(), stdio: 'inherit', env: process.env });
-  if (result.error) throw result.error;
-  process.exit(result.status ?? 1);
-}
 
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(`--${n}`);
@@ -61,7 +44,7 @@ if (MAX_UTTERANCE_SEC !== undefined && (!Number.isFinite(MAX_UTTERANCE_SEC) || M
 }
 // 항상 QA 전용 포트를 새로 할당한다. :5173은 사람의 dev server일 수 있어 절대 재사용하지 않는다.
 const VITE_PORT = await selectQaVitePort(REQUESTED_VITE_PORT);
-const QA_NODE = resolveQaNode();
+
 // 기본 0 = 임의 포트. 고정 포트는 이전 실행의 하네스 탭이 결과를 섞어 넣을 수 있다
 const QA_PORT = Number(val('qa-port', 0));
 
@@ -221,8 +204,14 @@ if (!flag('no-servers')) {
 // ── 3) vite dev ────────────────────────────────────────────────────────
 const VITE_URL = `http://127.0.0.1:${VITE_PORT}`;
 log(`  QA 전용 vite dev ${VITE_URL} 기동…`);
-const [viteNode, viteArgs] = viteCommand({ node: QA_NODE, root: PROJECT_ROOT, host: '127.0.0.1', port: VITE_PORT });
-spawnBg('vite', viteNode, viteArgs);
+spawnBg('vite', process.execPath, [
+  join(PROJECT_ROOT, 'node_modules/vite/bin/vite.js'),
+  '--host',
+  '127.0.0.1',
+  '--port',
+  String(VITE_PORT),
+  '--strictPort',
+]);
 await waitHttp(`${VITE_URL}/qa-harness.html`, { timeoutMs: 60_000, label: 'QA 전용 vite dev' });
 log(`  QA 전용 vite dev ${VITE_URL} 준비됨 (기존 서버 재사용 안 함)`);
 
