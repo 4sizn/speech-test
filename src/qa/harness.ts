@@ -41,6 +41,8 @@ interface Feature {
   config: Record<string, unknown>;
   sets: Array<'short' | 'long'>;
   tolerance: number;
+  /** CER 변동과 별개로 허용할 final 미수신 비율. 기본 0 = 모든 발화가 final을 내야 한다. */
+  maxNoFinalRate?: number;
   note?: string;
 }
 

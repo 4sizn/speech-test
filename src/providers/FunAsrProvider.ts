@@ -12,7 +12,7 @@ import type { ConfigField, RuntimeLocation } from '../core/SttProvider';
  */
 export class FunAsrProvider extends StreamingAsrProvider {
   static override readonly id = 'funasr';
-  static override readonly label = 'FunASR Streaming (paraformer)';
+  static override readonly label: string = 'FunASR Streaming (paraformer)';
   static override readonly locations: readonly RuntimeLocation[] = ['remote-onpremise'];
   static override readonly configSchema: readonly ConfigField[] = [
     {

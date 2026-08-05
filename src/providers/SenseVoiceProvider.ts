@@ -13,7 +13,7 @@ import type { ConfigField, RuntimeLocation } from '../core/SttProvider';
  */
 export class SenseVoiceProvider extends StreamingAsrProvider {
   static override readonly id = 'sensevoice';
-  static override readonly label = 'SenseVoice (다국어 · 한국어 지원)';
+  static override readonly label: string = 'SenseVoice (다국어 · 한국어 지원)';
   static override readonly locations: readonly RuntimeLocation[] = ['remote-onpremise'];
   static override readonly configSchema: readonly ConfigField[] = [
     {

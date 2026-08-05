@@ -83,6 +83,7 @@ export function writeReport({ eventsPath, env, plan }) {
       cerWorst: rates.length ? +Math.max(...rates).toFixed(4) : null,
       msAvg: measured.length ? Math.round(measured.reduce((a, b) => a + (b.ms ?? 0), 0) / measured.length) : null,
       samples: measured.length,
+      noFinals: measured.filter((i) => !i.finals).length,
       skipped,
       items: measured.map((i) => ({
         id: i.id,
@@ -140,6 +141,8 @@ export function writeReport({ eventsPath, env, plan }) {
       skipped,
       note: p.note ?? null,
       tolerance: p.tolerance ?? 0.02,
+      maxNoFinalRate: p.maxNoFinalRate ?? 0,
+      noFinals: run.noFinals,
       gateOptional: p.gateOptional ?? false,
       runsInDoc: doc.runs.length,
       prev: doc.runs.length > 1 ? doc.runs[doc.runs.length - 2].cerAvg : null,
@@ -159,13 +162,13 @@ export function writeSummary({ dir, stamp, rows, verdicts, env, overall }) {
   lines.push(`커밋: ${env.commit}${env.dirty ? ' (dirty)' : ''}`);
   lines.push('마이크 모드는 파일 주입 가짜 마이크(getUserMedia 오버라이드)로 측정 — 물리 마이크·잡음은 검증 범위 밖.');
   lines.push('');
-  lines.push('| 기능 | 샘플 | CER 평균 | 중앙값 | 최악 | 평균 지연 | 기준선 | 직전 | 판정 |');
-  lines.push('|---|---|---|---|---|---|---|---|---|');
+  lines.push('| 기능 | 샘플 | final 미수신 | CER 평균 | 중앙값 | 최악 | 평균 지연 | 기준선 | 직전 | 판정 |');
+  lines.push('|---|---|---|---|---|---|---|---|---|---|');
   for (const r of rows) {
     const v = verdicts.find((x) => x.feature === r.feature) ?? {};
     const reason = v.reason ? ` (${v.reason})` : '';
     lines.push(
-      `| ${r.feature} | ${r.skipped ? '—' : r.samples} | ${pct(r.cerAvg)} | ${pct(r.cerMedian)} | ${pct(r.cerWorst)} | ${r.msAvg == null ? '—' : `${(r.msAvg / 1000).toFixed(1)}s`} | ${pct(v.baseline)} | ${pct(r.prev)} | ${v.verdict ?? '—'}${reason} |`,
+      `| ${r.feature} | ${r.skipped ? '—' : r.samples} | ${r.skipped ? '—' : `${r.noFinals ?? 0}/${r.samples}`} | ${pct(r.cerAvg)} | ${pct(r.cerMedian)} | ${pct(r.cerWorst)} | ${r.msAvg == null ? '—' : `${(r.msAvg / 1000).toFixed(1)}s`} | ${pct(v.baseline)} | ${pct(r.prev)} | ${v.verdict ?? '—'}${reason} |`,
     );
   }
   lines.push('');

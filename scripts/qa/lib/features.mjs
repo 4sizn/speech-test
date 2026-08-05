@@ -12,7 +12,8 @@
  *       whisper-base-file은 6회 관측 범위가 27.4~31.9%(4.5%p)였다 — WebGPU 경로와 무음 경계
  *       분할이 시스템 부하에 따라 조각 수를 바꾸기 때문. 처음 3%p로 뒀다가 무관한 커밋에서
  *       0.2%p 초과로 FAIL이 나 5%p로 올렸다.
- *       → 전 기능 5%p · 클라우드 7%p.
+ *       → 정식 게이트 전 기능 5%p. 임시로 +5%p 완화했던 값은 승인 기준이 아니며,
+ *       실제 회귀의 원인을 고치고 같은 환경에서 다시 측정해야 한다.
  *       ⚠ **기준선이 운 좋은 측정값으로 잡히면 정상 측정이 계속 경계에 걸린다.** whisper-base-file
  *       기준선 27.4%는 19회 관측(27.4~33.8%) 중 최저 수준이라, 부하가 조금 있으면 +5%p에 닿는다.
  *       같은 실행들의 **중앙값은 27.8%로 안정적**이었다 — 평균은 한 샘플의 실패에 크게 끌린다.
@@ -30,7 +31,14 @@
  * requires: 러너가 전제 조건을 점검해 결과지 환경에 기록한다.
  */
 
+import { STREAMING_ENDPOINT_PRESETS } from '@rsupport/rvs-stt-kit/streaming';
+
 const ON_PREM = 'remote-onpremise';
+const streamingEndpoints = Object.freeze({
+  fasterWhisper: STREAMING_ENDPOINT_PRESETS.fasterWhisper.endpoint,
+  funAsr: STREAMING_ENDPOINT_PRESETS.funAsr.endpoint,
+  senseVoice: STREAMING_ENDPOINT_PRESETS.senseVoice.endpoint,
+});
 
 /** @returns {Array<object>} */
 export function buildFeatures(profile = 'quick') {
@@ -85,7 +93,7 @@ export function buildFeatures(profile = 'quick') {
       provider: 'streaming',
       mode: 'file',
       location: ON_PREM,
-      config: { wsEndpoint: 'ws://localhost:8765' },
+      config: { wsEndpoint: streamingEndpoints.fasterWhisper },
       sets: ['short', 'long'],
       tolerance: 0.05,
       requires: { server: 'faster-whisper' },
@@ -95,7 +103,7 @@ export function buildFeatures(profile = 'quick') {
       provider: 'streaming',
       mode: 'mic',
       location: ON_PREM,
-      config: { wsEndpoint: 'ws://localhost:8765' },
+      config: { wsEndpoint: streamingEndpoints.fasterWhisper },
       sets: ['short'],
       tolerance: 0.05,
       requires: { server: 'faster-whisper' },
@@ -105,7 +113,7 @@ export function buildFeatures(profile = 'quick') {
       provider: 'sensevoice',
       mode: 'file',
       location: ON_PREM,
-      config: { wsEndpoint: 'ws://localhost:8767' },
+      config: { wsEndpoint: streamingEndpoints.senseVoice },
       sets: ['short', 'long'],
       tolerance: 0.05,
       requires: { server: 'sensevoice' },
@@ -115,7 +123,7 @@ export function buildFeatures(profile = 'quick') {
       provider: 'sensevoice',
       mode: 'mic',
       location: ON_PREM,
-      config: { wsEndpoint: 'ws://localhost:8767' },
+      config: { wsEndpoint: streamingEndpoints.senseVoice },
       sets: ['short'],
       tolerance: 0.05,
       requires: { server: 'sensevoice' },
@@ -125,7 +133,7 @@ export function buildFeatures(profile = 'quick') {
       provider: 'funasr',
       mode: 'file',
       location: ON_PREM,
-      config: { wsEndpoint: 'ws://localhost:8766' },
+      config: { wsEndpoint: streamingEndpoints.funAsr },
       sets: ['short', 'long'],
       tolerance: 0.05,
       requires: { server: 'funasr' },
@@ -143,7 +151,7 @@ export function buildFeatures(profile = 'quick') {
       // gateOptional을 뗐다 — 그 플래그의 근거였던 "브라우저 서비스가 거부한다"는 판정이 오진이었고
       // (진짜 원인은 ko-KR SODA 언어팩), 러너에서 팩 유입을 막은 뒤 8.7%로 결정론적으로 측정된다.
       // 정식 게이트 대상이다: 회귀하면 푸시가 막힌다.
-      tolerance: 0.07,
+      tolerance: 0.05,
       requires: { network: true },
       note: '클라우드 인식 — 실행마다 흔들린다(허용 7%p)',
     },
@@ -168,7 +176,7 @@ export function buildFeatures(profile = 'quick') {
        * WebSpeech는 qa:mic으로도 검증되지 않는다(가짜 파일 캡처가 인식 오디오 스택에 닿지 않음).
        */
       gateOptional: true,
-      tolerance: 0.07,
+      tolerance: 0.05,
       requires: { network: true },
       note: '파일 주입 가짜 마이크라 실제로는 파일 트랙 경로를 측정한다 — 마이크 경로는 사람이 확인',
     },
@@ -208,7 +216,7 @@ export function buildFeatures(profile = 'quick') {
       location: 'local-client',
       config: { modelId: 'Xenova/whisper-small', maxChunkSec: '20', partialIntervalSec: '0' },
       sets: ['short', 'long'],
-      tolerance: 0.03,
+      tolerance: 0.05,
       requires: { asset: 'Xenova/whisper-small' },
     },
     {
@@ -222,7 +230,7 @@ export function buildFeatures(profile = 'quick') {
       // 유입을 막으므로 이 기능은 보통 온디바이스가 아니라 온라인 폴백을 측정한다(즉 무엇을 재는지가
       // 환경에 따라 바뀐다). 온디바이스 경로를 실제로 재려면 언어팩이 설치된 환경이 필요하다.
       gateOptional: true,
-      tolerance: 0.07,
+      tolerance: 0.05,
       requires: { soda: true },
       // 이 기능이 QA 환경을 오염시킨 전례가 있다: Provider가 install()을 자동 호출하던 시절,
       // 이 기능이 브라우저 프로필에 불완전한 ko-KR 언어팩을 설치해 **같은 프로필의 다른

@@ -3,21 +3,43 @@
  * STT E2E 러너 — 한 명령으로 전 기능을 자동 측정하고 결과지·판정을 낸다.
  *
  *   npm run qa:stt [-- --profile quick|full] [--samples N] [--features a,b]
+ *                     [--vite-port N] [--faster-whisper-model M] [--max-utterance-sec S]
  *                     [--update-baseline] [--no-servers] [--keep-open]
  *
  * 흐름: 전제 점검 → 온프레미스 서버 기동 → vite dev 확보 → QA 서버 →
  *      Chrome(시스템 설치본) → 하네스 순회 → 결과지 작성 → 기준선 대비 판정 → exit code
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { createConnection } from 'node:net';
 import puppeteer from 'puppeteer-core';
 import { PROJECT_ROOT, DATASET_ROOT, STT_E2E_LOCAL_DIR, assertNormalizerInSync, loadSamples } from './lib/dataset.mjs';
 import { buildFeatures, SERVER_PORTS } from './lib/features.mjs';
 import { startQaServer } from './server.mjs';
+import { selectQaVitePort } from './lib/vite-port.mjs';
+import { createQaChromeProfile } from './lib/chrome-profile.mjs';
+import { fasterWhisperCommand, fasterWhisperModelFromArgs } from './lib/server-command.mjs';
+import { parentQaRuntimeCommand, resolveQaNode, viteCommand } from './lib/node-runtime.mjs';
 import { writeReport, writeSummary } from './lib/report.mjs';
 import { judge, updateBaseline, sourceHashes } from './lib/gate.mjs';
+
+// npm inherits the shell's PATH and can launch this runner on Node 16. Re-exec
+// before any use of fetch/AbortSignal.timeout so QA fails neither silently nor
+// after a misleading 60-second Vite readiness timeout.
+const qaRuntime = resolveQaNode();
+const reexec = parentQaRuntimeCommand({
+  currentNode: process.execPath,
+  compatibleNode: qaRuntime,
+  script: process.argv[1],
+  args: process.argv.slice(2),
+});
+if (reexec) {
+  const [node, nodeArgs] = reexec;
+  const result = spawnSync(node, nodeArgs, { cwd: process.cwd(), stdio: 'inherit', env: process.env });
+  if (result.error) throw result.error;
+  process.exit(result.status ?? 1);
+}
 
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(`--${n}`);
@@ -31,7 +53,15 @@ const LIMIT = args.includes('--samples') ? Number(val('samples')) : undefined;
 const ONLY = (val('features', '') || '').split(',').filter(Boolean);
 const CHROME =
   process.env.STT_QA_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const VITE_PORT = 5173;
+const REQUESTED_VITE_PORT = Number(val('vite-port', 0));
+const FASTER_WHISPER_MODEL = fasterWhisperModelFromArgs(args);
+const MAX_UTTERANCE_SEC = args.includes('--max-utterance-sec') ? Number(val('max-utterance-sec')) : undefined;
+if (MAX_UTTERANCE_SEC !== undefined && (!Number.isFinite(MAX_UTTERANCE_SEC) || MAX_UTTERANCE_SEC <= 0)) {
+  throw new Error('--max-utterance-sec requires a positive number');
+}
+// 항상 QA 전용 포트를 새로 할당한다. :5173은 사람의 dev server일 수 있어 절대 재사용하지 않는다.
+const VITE_PORT = await selectQaVitePort(REQUESTED_VITE_PORT);
+const QA_NODE = resolveQaNode();
 // 기본 0 = 임의 포트. 고정 포트는 이전 실행의 하네스 탭이 결과를 섞어 넣을 수 있다
 const QA_PORT = Number(val('qa-port', 0));
 
@@ -99,6 +129,8 @@ function killChildren() {
     }
   }
 }
+// Vite/QA 준비 단계에서 예외가 나도 이 실행이 기동한 child만 정리한다.
+process.once('exit', killChildren);
 
 // ── 1) 전제 점검 ────────────────────────────────────────────────────────
 if (!existsSync(DATASET_ROOT)) {
@@ -148,6 +180,13 @@ if (!flag('no-servers')) {
   for (const engine of needServers) {
     const port = SERVER_PORTS[engine];
     if (await portOpen(port)) {
+      if (engine === 'faster-whisper' && (FASTER_WHISPER_MODEL || MAX_UTTERANCE_SEC !== undefined)) {
+        throw new Error(
+          'controlled faster-whisper variables require an unoccupied ' +
+          `:${port} (model=${FASTER_WHISPER_MODEL ?? 'default'}, maxUtteranceSec=${MAX_UTTERANCE_SEC ?? 'default'}); ` +
+          'refusing to measure an unidentified reused server',
+        );
+      }
       log(`  :${port} ${engine} — 이미 실행 중(그대로 사용)`);
       serverStatus[port] = 'reused';
       continue;
@@ -158,11 +197,18 @@ if (!flag('no-servers')) {
       continue;
     }
     log(`  :${port} ${engine} 기동…`);
-    spawnBg(engine, py, [join(PROJECT_ROOT, 'server/realtime_asr_server.py'), '--engine', engine, '--port', String(port)]);
+    const command = engine === 'faster-whisper'
+      ? fasterWhisperCommand({
+          script: join(PROJECT_ROOT, 'server/realtime_asr_server.py'), port, model: FASTER_WHISPER_MODEL,
+          maxUtteranceSec: MAX_UTTERANCE_SEC,
+        })
+      : [join(PROJECT_ROOT, 'server/realtime_asr_server.py'), '--engine', engine, '--port', String(port)];
+    spawnBg(engine, py, command);
     try {
       await waitPort(port, { timeoutMs: 180_000, label: `${engine}(:${port})` });
       log(`  :${port} ${engine} 준비됨`);
-      serverStatus[port] = 'started';
+      serverStatus[port] = engine === 'faster-whisper' && (FASTER_WHISPER_MODEL || MAX_UTTERANCE_SEC !== undefined)
+        ? `started:model=${FASTER_WHISPER_MODEL ?? 'default'},maxUtteranceSec=${MAX_UTTERANCE_SEC ?? 'default'}` : 'started';
     } catch (err) {
       log(`  :${port} ${engine} 실패 — ${err.message}`);
       serverStatus[port] = 'failed';
@@ -173,15 +219,12 @@ if (!flag('no-servers')) {
 }
 
 // ── 3) vite dev ────────────────────────────────────────────────────────
-const VITE_URL = `http://localhost:${VITE_PORT}`;
-let viteStarted = false;
-if (!(await httpAlive(`${VITE_URL}/qa-harness.html`))) {
-  log(`  vite dev 기동…`);
-  spawnBg('vite', 'npm', ['run', 'dev']);
-  await waitHttp(`${VITE_URL}/qa-harness.html`, { timeoutMs: 60_000, label: 'vite dev' });
-  viteStarted = true;
-}
-log(`  vite dev ${VITE_URL} ${viteStarted ? '기동됨' : '재사용'}`);
+const VITE_URL = `http://127.0.0.1:${VITE_PORT}`;
+log(`  QA 전용 vite dev ${VITE_URL} 기동…`);
+const [viteNode, viteArgs] = viteCommand({ node: QA_NODE, root: PROJECT_ROOT, host: '127.0.0.1', port: VITE_PORT });
+spawnBg('vite', viteNode, viteArgs);
+await waitHttp(`${VITE_URL}/qa-harness.html`, { timeoutMs: 60_000, label: 'QA 전용 vite dev' });
+log(`  QA 전용 vite dev ${VITE_URL} 준비됨 (기존 서버 재사용 안 함)`);
 
 // ── 4) QA 서버 ─────────────────────────────────────────────────────────
 const qa = await startQaServer({ profile: PROFILE, limit: LIMIT, port: QA_PORT });
@@ -201,10 +244,13 @@ try {
   /* git 없음 */
 }
 
+const chromeProfileDir = createQaChromeProfile();
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: false, // SpeechRecognition은 headless에서 동작을 보장하지 못한다
-  userDataDir: join(STT_E2E_LOCAL_DIR, 'chrome-profile'),
+  // Never share a userDataDir: concurrent serial A/B jobs otherwise either fail
+  // to launch or silently measure the other run's browser state.
+  userDataDir: chromeProfileDir,
   defaultViewport: { width: 1280, height: 800 },
   args: [
     // 사람이 재생 버튼을 누르지 않는 것이 요구사항 — 자동 재생이 막히면 전부 실패한다
@@ -226,7 +272,7 @@ try {
   page.on('console', (m) => {
     if (m.type() === 'error') log(`  [browser:error] ${m.text().slice(0, 200)}`);
   });
-  const url = new URL(`http://localhost:${VITE_PORT}/qa-harness.html`);
+  const url = new URL(`${VITE_URL}/qa-harness.html`);
   url.searchParams.set('server', `http://127.0.0.1:${qa.port}`);
   if (ONLY.length) url.searchParams.set('features', ONLY.join(','));
   await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });
@@ -261,6 +307,8 @@ try {
     profile: PROFILE,
     snapshot: {
       chrome: (await browser.version()).replace('HeadlessChrome/', 'Chrome/'),
+      vite: { url: VITE_URL, port: VITE_PORT, managed: true, reused: false },
+      worktree: PROJECT_ROOT,
       assets: assetStatus,
       servers: serverStatus,
       dataset: samplesDoc.datasetName,
@@ -269,7 +317,7 @@ try {
     },
     sourceHashes: hashesAtStart,
     planFeatures: plan.map((f) => f.feature),
-    envLine: `${Object.entries(serverStatus).map(([p, s]) => `:${p} ${s}`).join(' · ') || '온프레미스 미사용'} · 샘플 ${qa.sampleCount}`,
+    envLine: `vite ${VITE_URL} (managed-new) · ${Object.entries(serverStatus).map(([p, s]) => `:${p} ${s}`).join(' · ') || '온프레미스 미사용'} · 샘플 ${qa.sampleCount}`,
   };
 
   const stray = qa.rejectedEvents();
@@ -290,7 +338,10 @@ try {
     exitCode = 1;
   }
 } finally {
-  if (!flag('keep-open')) await browser.close().catch(() => {});
+  if (!flag('keep-open')) {
+    await browser.close().catch(() => {});
+    rmSync(chromeProfileDir, { recursive: true, force: true });
+  }
   await qa.close();
   killChildren();
 }

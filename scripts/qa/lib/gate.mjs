@@ -103,6 +103,9 @@ export function judge(rows, baseline = loadBaseline(), planFeatures) {
     const base = baseline.features?.[r.feature];
     const baseCer = base?.cerAvg ?? null;
     const tol = r.tolerance ?? 0.02;
+    const noFinals = Number(r.noFinals ?? 0);
+    const finalSamples = Number(r.samples ?? 0);
+    const maxNoFinalRate = r.maxNoFinalRate ?? 0;
 
     if (r.skipped) {
       verdicts.push({
@@ -111,6 +114,20 @@ export function judge(rows, baseline = loadBaseline(), planFeatures) {
         baseline: baseCer,
         cerAvg: null,
         reason: baseCer == null ? r.skipped : `기준선이 있는데 측정 안 됨: ${r.skipped}`,
+      });
+      continue;
+    }
+    // CER은 텍스트가 도착했을 때의 정확도 지표다. final이 전혀 오지 않아 빈 문자열로
+    // 계산된 CER 100%를 단순 "오차 변동"으로 취급하면 임계 완화가 무응답 결함을 숨긴다.
+    // 따라서 final 미수신률은 CER 허용오차와 독립된 동작 계약으로 판정한다.
+    if (finalSamples && noFinals / finalSamples > maxNoFinalRate + 1e-9) {
+      verdicts.push({
+        feature: r.feature,
+        verdict: r.gateOptional ? 'WARN' : 'FAIL',
+        baseline: baseCer,
+        cerAvg: r.cerAvg,
+        noFinals,
+        reason: `final 미수신 ${noFinals}/${finalSamples}건 (허용 ${(maxNoFinalRate * 100).toFixed(0)}%)`,
       });
       continue;
     }

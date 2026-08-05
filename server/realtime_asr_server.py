@@ -57,11 +57,11 @@ os.environ.setdefault("MODELSCOPE_CACHE", str(MODELS_DIR / "funasr"))
 SILENCE_RMS = 0.008
 SILENCE_FINALIZE_SEC = 0.9  # 이만큼 무음이 이어지면 발화 확정
 PARTIAL_INTERVAL_SEC = 0.6  # partial 재전사 기본 주기 — 엔진이 PARTIAL_INTERVAL_SEC로 재정의 가능
-# 무음이 없어도 이 길이에서 강제 확정. **모델 속도와 묶여 있다** — 확정은 그 길이만큼을
-# 다시 전사하므로 25s×RTF 0.36(small) ≈ 9s가 걸리고, 그 사이 재생/발화가 끝나면 확정 결과가
-# 클라이언트 종료 뒤에 도착해 유실된다(실측: 35초 파일에서 final 0건 → CER 100%).
-# 15s면 ≈5s로 줄어 여유가 생기고, partial 스냅샷 상한(최근 15초)과도 맞는다.
-MAX_UTTERANCE_SEC = 15.0
+# 무음이 없어도 이 길이에서 강제 확정. 15s 분할은 partial 스냅샷 상한과 맞추려 도입했지만,
+# 동일 small 모델·동일 7샘플 A/B에서 CER 19.7%였고 25s는 15.6%로 기준선 범위로 회복했다.
+# 25s final(약 9s)은 클라이언트가 6초에 소켓을 닫던 옛 경로에서만 유실됐다. 현재 provider는
+# stop 후 서버 close/final을 최대 20초 기다리므로 정확도 우선으로 25s를 기본으로 둔다.
+MAX_UTTERANCE_SEC = 25.0
 # whisper-streaming: process_iter를 부르기 전에 모을 최소 오디오. 250ms 프레임마다 부르면
 # 호출마다 전사가 돌아 비용이 과하다 — UFAL 서버 기본값(1s)과 같게 둔다.
 WSTREAM_MIN_CHUNK_SEC = 1.0
@@ -503,6 +503,7 @@ async def handle(ws, engine, engine_kind: str):
 
 
 async def main():
+    global MAX_UTTERANCE_SEC
     ap = argparse.ArgumentParser(description="실시간 STT WebSocket 서버")
     ap.add_argument(
         "--engine",
@@ -518,7 +519,12 @@ async def main():
     # 8코어 맥에서 4가 가장 빨랐다(8은 효율코어까지 써서 1.0s → 1.7s로 악화)
     ap.add_argument("--ncpu", type=int, default=4, help="torch CPU 스레드 수 (sensevoice)")
     ap.add_argument("--beam", type=int, default=1, help="beam size (whisper-streaming)")
+    # Controlled QA only: compare segmentation limits with the same model, samples, and endpoint.
+    ap.add_argument("--max-utterance-sec", type=float, default=MAX_UTTERANCE_SEC)
     args = ap.parse_args()
+    if args.max_utterance_sec <= 0:
+        ap.error("--max-utterance-sec must be positive")
+    MAX_UTTERANCE_SEC = args.max_utterance_sec
 
     import websockets
 
