@@ -71,7 +71,10 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
   static supportsAudioTrackInput(): boolean {
     if (this.#trackInput !== undefined) return this.#trackInput;
     const SR = getSR();
-    if (!SR) return (this.#trackInput = false);
+    if (!SR) {
+      this.#trackInput = false;
+      return false;
+    }
     try {
       // 오버로드가 있으면 {}→MediaStreamTrack 변환 실패로 TypeError(시작 안 됨).
       // 없으면 여분 인자 무시되어 마이크로 시작 → 즉시 abort.
@@ -82,9 +85,12 @@ export class WebSpeechProvider extends SttProvider<WebSpeechConfig> {
       } catch {
         /* noop */
       }
-      return (this.#trackInput = false);
+      this.#trackInput = false;
+      return false;
     } catch (e) {
-      return (this.#trackInput = e instanceof Error && e.name === 'TypeError');
+      const supportsTrackInput = e instanceof Error && e.name === 'TypeError';
+      this.#trackInput = supportsTrackInput;
+      return supportsTrackInput;
     }
   }
 

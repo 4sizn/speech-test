@@ -30,6 +30,10 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
   changed="$changed$files"
 done
 
+# 정적 품질 게이트는 빠르게 항상 실행한다. Node 버전은 .nvmrc에 맞춰 `nvm use`한
+# 개발 셸에서 git을 실행하는 것이 전제다.
+npm run lint
+
 if [ -z "$changed" ]; then
   echo "STT QA 게이트: STT 소스 변경 없음 → 통과"
   exit 0

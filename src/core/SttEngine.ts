@@ -335,7 +335,9 @@ export class SttEngine {
   }
 
   #releaseMic(): void {
-    this.#micStream?.getTracks().forEach((t) => t.stop());
+    this.#micStream?.getTracks().forEach((track) => {
+      track.stop();
+    });
     this.#micStream = null;
   }
 
