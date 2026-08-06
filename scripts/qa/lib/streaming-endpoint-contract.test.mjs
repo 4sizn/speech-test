@@ -13,7 +13,7 @@ for (const [featureName, preset] of [
   ['streaming-mic', STREAMING_ENDPOINT_PRESETS.fasterWhisper],
   ['sensevoice-file', STREAMING_ENDPOINT_PRESETS.senseVoice],
   ['sensevoice-mic', STREAMING_ENDPOINT_PRESETS.senseVoice],
-  ['funasr-file', STREAMING_ENDPOINT_PRESETS.funAsr],
+  ['funasr-streaming-file', STREAMING_ENDPOINT_PRESETS.funAsr],
 ]) {
   const feature = features.find(({ feature }) => feature === featureName);
   assert.ok(feature, `${featureName} must exist`);

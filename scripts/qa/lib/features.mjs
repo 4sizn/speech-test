@@ -129,17 +129,30 @@ export function buildFeatures(profile = 'quick') {
       requires: { server: 'sensevoice' },
     },
     {
-      feature: 'funasr-file',
+      feature: 'funasr-streaming-file',
+      engineProfile: 'funasr-streaming',
       provider: 'funasr',
       mode: 'file',
       location: ON_PREM,
       config: { wsEndpoint: streamingEndpoints.funAsr },
       sets: ['short', 'long'],
       tolerance: 0.05,
-      requires: { server: 'funasr' },
+      requires: { server: 'funasr-streaming' },
       // 기본 모델이 중국어 전용이라 한국어 CER은 100%를 크게 넘는 게 정상이다.
       // 절대값이 아니라 직전 대비 변화만 의미가 있다.
-      note: '중국어 전용 모델 — 절대 CER 무의미, 회귀 감지용',
+      note: '중국어 전용 streaming 모델 — 절대 CER 무의미, 회귀 감지용',
+    },
+    {
+      feature: 'funasr-offline-file',
+      engineProfile: 'funasr-offline',
+      provider: 'streaming',
+      mode: 'file',
+      location: ON_PREM,
+      config: { wsEndpoint: streamingEndpoints.funAsrOffline },
+      sets: ['short', 'long'],
+      tolerance: 0.05,
+      requires: { server: 'funasr-offline' },
+      note: '중국어 offline paraformer · snapshot partial/final 정확도 회귀 감지용, 대화 SLA 비대상',
     },
     {
       feature: 'webspeech-file',

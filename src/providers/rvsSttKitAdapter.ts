@@ -11,5 +11,7 @@ export const streamingEndpoints = Object.freeze({
   fasterWhisper: STREAMING_ENDPOINT_PRESETS.fasterWhisper.endpoint,
   whisperStreaming: STREAMING_ENDPOINT_PRESETS.whisperStreaming.endpoint,
   funAsr: STREAMING_ENDPOINT_PRESETS.funAsr.endpoint,
+  /** FunASR offline paraformer is a speech-test server profile; kit has no preset for it. */
+  funAsrOffline: 'ws://localhost:8769',
   senseVoice: STREAMING_ENDPOINT_PRESETS.senseVoice.endpoint,
 });

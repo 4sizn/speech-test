@@ -8,8 +8,8 @@
 import { SttEngine } from './core/SttEngine';
 import { SystemEvent, FeatureEvent, Mode } from './core/events';
 import type { ConfigField, ProviderConfig, RuntimeLocation } from './core/SttProvider';
-import type { ProviderMeta } from './core/ProviderRegistry';
 import { createProviderRegistry } from './providers/registerAll';
+import { ENGINE_PROFILES, getEngineProfile, resolveEngineProfile, supportsLanguage, type EngineProfile } from './profiles/engineProfiles';
 import { DatasetRegistry } from './datasets/DatasetRegistry';
 import { AihubCallCenterAdapter } from './datasets/adapters/AihubCallCenterAdapter';
 import { mountDatasetPanel } from './ui/DatasetPanel';
@@ -33,6 +33,12 @@ const engine = new SttEngine(registry);
 
 // id → 메타(configSchema 포함) 조회용
 const META = new Map(registry.list().map((m) => [m.id, m]));
+const LEGACY_PROFILE_BY_PROVIDER: Record<string, string> = {
+  streaming: 'faster-whisper-live',
+  funasr: 'funasr-streaming',
+  sensevoice: 'sensevoice-snapshot',
+};
+let selectedProfile: EngineProfile | null = null;
 
 // ── DOM ────────────────────────────────────────────────────────────────
 const el = {
@@ -82,8 +88,7 @@ function defaultsFor(schema: readonly ConfigField[] = []): ProviderConfig {
   for (const f of schema) if (f.default !== undefined) d[f.key] = f.default;
   return d;
 }
-function loadCfg(id: string): ProviderConfig {
-  const schema = META.get(id)?.configSchema || [];
+function loadCfg(id: string, schema: readonly ConfigField[] = META.get(id)?.configSchema || []): ProviderConfig {
   let saved: ProviderConfig = {};
   try {
     saved = JSON.parse(localStorage.getItem(cfgKey(id)) || '{}');
@@ -91,6 +96,15 @@ function loadCfg(id: string): ProviderConfig {
     saved = {};
   }
   return { ...defaultsFor(schema), ...saved };
+}
+function loadProfileCfg(profile: EngineProfile): ProviderConfig {
+  const schema = META.get(profile.providerId)?.configSchema || [];
+  const saved = loadCfg(profile.id, schema);
+  // Provider 단위로 저장됐던 기존 설정을 잃지 않되 profile 고유 값이 우선한다.
+  const legacy = LEGACY_PROFILE_BY_PROVIDER[profile.providerId] === profile.id
+    ? loadCfg(profile.providerId, schema)
+    : {};
+  return { ...legacy, ...saved };
 }
 function saveCfg(id: string, obj: ProviderConfig): void {
   localStorage.setItem(cfgKey(id), JSON.stringify(obj));
@@ -100,7 +114,7 @@ function saveCfg(id: string, obj: ProviderConfig): void {
 engine.bus.system((m) => {
   switch (m.type) {
     case SystemEvent.ENGINE_READY:
-      populateProviders(m.payload.providers);
+      populateProfiles();
       break;
     case SystemEvent.PROVIDER_CHANGED:
       reflectProvider(m.payload);
@@ -174,14 +188,29 @@ engine.bus.feature((m) => {
 });
 
 // ── 렌더 헬퍼 ────────────────────────────────────────────────────────
-function populateProviders(list: ProviderMeta[]): void {
+function populateProfiles(): void {
+  const selected = selectedProfile?.id || el.providerSelect.value;
   el.providerSelect.innerHTML = '';
-  for (const p of list) {
+  for (const profile of ENGINE_PROFILES) {
+    const transport = META.get(profile.providerId);
+    const languageSupported = supportsLanguage(profile, el.langSelect.value);
     const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.supported ? p.label : `${p.label} (미지원)`;
-    opt.disabled = !p.supported;
+    opt.value = profile.id;
+    opt.textContent = `${profile.label} — ${profile.description}`;
+    opt.disabled = !transport?.supported || !languageSupported;
     el.providerSelect.appendChild(opt);
+  }
+  if (selected && [...el.providerSelect.options].some((opt) => opt.value === selected && !opt.disabled)) {
+    el.providerSelect.value = selected;
+  }
+}
+
+async function useProfile(id: string): Promise<void> {
+  const resolution = resolveEngineProfile(id, loadProfileCfg(getEngineProfile(id)));
+  selectedProfile = resolution.profile;
+  await engine.useProvider(resolution.providerId, resolution.config);
+  if (!resolution.profile.modes.includes(engine.mode)) {
+    engine.setMode(resolution.profile.modes[0]!);
   }
 }
 
@@ -197,12 +226,16 @@ interface ProviderChangedPayload {
 }
 
 function reflectProvider({ provider, label, capabilities, configSchema, fileInputKind, locations, location, mode }: ProviderChangedPayload): void {
-  el.providerSelect.value = provider;
+  const profile = selectedProfile;
+  el.providerSelect.value = profile?.id ?? provider;
   applyControls();
   setActiveMode(mode);
-  el.capabilityHint.textContent = `지원 모드: ${capabilities.map((c) => modeLabel(c)).join(' · ')}`;
+  const partial = profile ? ` · partial: ${profile.partialStrategy}` : '';
+  const profileCapabilities = profile ? capabilities.filter((mode) => profile.modes.includes(mode)) : capabilities;
+  el.capabilityHint.textContent = `${profile?.conversation ? '실시간 대화 후보' : '파일/정확도 우선'}${partial} · 지원 모드: ${profileCapabilities.map((c) => modeLabel(c)).join(' · ')}`;
   renderLocations(locations, location);
-  renderSettings(provider, label, configSchema);
+  // 엔진 endpoint는 profile contract가 고정한다. transport의 범용 selector를 다시 노출하지 않는다.
+  renderSettings(profile?.id ?? provider, profile?.label ?? label, configSchema.filter((field) => field.key !== 'wsEndpoint'));
   // WebSpeech처럼 파일을 음향 루프백으로만 받는 Provider는 디지털 라우팅 UI 노출
   el.routing.hidden = fileInputKind !== 'loopback';
   if (!el.routing.hidden) void populateSinks();
@@ -395,12 +428,14 @@ function applyControls(): void {
   el.providerSelect.disabled = busy;
   el.langSelect.disabled = busy;
   for (const btn of el.modeButtons) {
-    const supported = (engine.provider?.capabilities ?? []).includes(btn.dataset.mode as Mode);
+    const supported = (engine.provider?.capabilities ?? []).includes(btn.dataset.mode as Mode) &&
+      (selectedProfile?.modes ?? []).includes(btn.dataset.mode as Mode);
     btn.disabled = busy || !supported;
     btn.classList.toggle('unavailable', !supported);
   }
   for (const btn of el.locationButtons) {
-    const supported = (engine.provider?.locations ?? []).includes(btn.dataset.location as RuntimeLocation);
+    const supported = (engine.provider?.locations ?? []).includes(btn.dataset.location as RuntimeLocation) &&
+      (selectedProfile?.locations ?? []).includes(btn.dataset.location as RuntimeLocation);
     btn.disabled = busy || !supported;
     btn.classList.toggle('unavailable', !supported);
   }
@@ -511,6 +546,9 @@ function removeFile(id: string): void {
 
 function safeSetMode(mode: Mode): void {
   try {
+    if (selectedProfile && !selectedProfile.modes.includes(mode)) {
+      throw new Error(`[${selectedProfile.label}]은 ${modeLabel(mode)} 모드를 지원하지 않습니다`);
+    }
     engine.setMode(mode);
   } catch (err) {
     setStatus(err instanceof Error ? err.message : String(err), 'warn');
@@ -519,9 +557,8 @@ function safeSetMode(mode: Mode): void {
 
 // ── 이벤트 바인딩 ─────────────────────────────────────────────────────
 el.providerSelect.addEventListener('change', async () => {
-  const id = el.providerSelect.value;
   try {
-    await engine.useProvider(id, loadCfg(id));
+    await useProfile(el.providerSelect.value);
   } catch (err) {
     setStatus(err instanceof Error ? err.message : String(err), 'error');
   }
@@ -535,16 +572,25 @@ for (const btn of el.modeButtons) {
 for (const btn of el.locationButtons) {
   btn.addEventListener('click', () => {
     const location = btn.dataset.location as RuntimeLocation;
-    const id = el.providerSelect.value;
-    const cfg = { ...loadCfg(id), location };
-    saveCfg(id, cfg);
+    const profileId = selectedProfile?.id ?? el.providerSelect.value;
+    const cfg = { ...loadCfg(profileId), location };
+    saveCfg(profileId, cfg);
     engine.configureProvider({ location });
     renderLocations(engine.provider?.locations ?? [], location);
     setStatus(`실행 위치 → ${LOCATION_LABEL[location]}`, 'ok');
   });
 }
 
-el.langSelect.addEventListener('change', () => engine.setLang(el.langSelect.value));
+el.langSelect.addEventListener('change', async () => {
+  engine.setLang(el.langSelect.value);
+  populateProfiles();
+  if (selectedProfile && !supportsLanguage(selectedProfile, el.langSelect.value)) {
+    const next = ENGINE_PROFILES.find((profile) =>
+      supportsLanguage(profile, el.langSelect.value) && META.get(profile.providerId)?.supported,
+    );
+    if (next) await useProfile(next.id);
+  }
+});
 
 el.sinkRefresh.addEventListener('click', () => void populateSinks());
 el.sinkSelect.addEventListener('change', async () => {
@@ -595,9 +641,11 @@ async function boot(): Promise<void> {
   engine.attachAudioElement(el.audio);
   engine.ready();
 
-  const first = engine.listProviders().find((p) => p.supported);
+  const first = ENGINE_PROFILES.find((profile) =>
+    META.get(profile.providerId)?.supported && supportsLanguage(profile, engine.lang),
+  );
   if (first) {
-    await engine.useProvider(first.id, loadCfg(first.id));
+    await useProfile(first.id);
   } else {
     setStatus('사용 가능한 Provider가 없습니다', 'error');
     return;

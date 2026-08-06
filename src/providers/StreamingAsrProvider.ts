@@ -17,13 +17,15 @@ interface StreamingConfig extends ProviderConfig {
  */
 const ENGINE_BY_ENDPOINT: Record<string, string> = {
   [streamingEndpoints.fasterWhisper]: 'faster-whisper',
-  [streamingEndpoints.funAsr]: 'FunASR',
+  [streamingEndpoints.funAsr]: 'FunASR Streaming',
+  [streamingEndpoints.funAsrOffline]: 'FunASR Offline',
   [streamingEndpoints.whisperStreaming]: 'whisper_streaming',
   [streamingEndpoints.senseVoice]: 'SenseVoice',
 };
 const SERVE_ARGS_BY_ENDPOINT: Record<string, string> = {
   [streamingEndpoints.fasterWhisper]: '--engine faster-whisper --port 8765',
-  [streamingEndpoints.funAsr]: '--engine funasr --port 8766',
+  [streamingEndpoints.funAsr]: '--engine funasr-streaming --port 8766',
+  [streamingEndpoints.funAsrOffline]: '--engine funasr-offline --port 8769',
   [streamingEndpoints.whisperStreaming]: '--engine whisper-streaming --port 8768',
   [streamingEndpoints.senseVoice]: '--engine sensevoice --port 8767',
 };

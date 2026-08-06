@@ -271,7 +271,34 @@ class FunAsrEngine:
         return state["text"]
 
 
-# ── 세션 (접속 1개 = 발화 스트림 1개) ────────────────────────────────────
+class FunAsrOfflineEngine:
+    """paraformer offline 모델 — 파일/정확도 우선 snapshot 재전사."""
+
+    PARTIAL_INTERVAL_SEC = 1.2
+
+    def __init__(self, model_name: str):
+        from funasr import AutoModel
+
+        log.info("FunASR offline 모델 로드: %s", model_name)
+        self.model = AutoModel(
+            model=model_name,
+            disable_update=True,
+            hub="ms",
+        )
+        log.info("모델 준비 완료")
+
+    def transcribe(self, pcm: np.ndarray, lang: str | None) -> str:
+        res = self.model.generate(
+            input=pcm,
+            language=lang or "auto",
+            use_itn=True,
+            disable_pbar=True,
+        )
+        return str(res[0].get("text", "")).strip() if res else ""
+
+    def warmup(self) -> None:
+        self.transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32), None)
+
 class Session:
     def __init__(self, ws, engine, engine_kind: str, loop):
         self.ws = ws
@@ -287,7 +314,7 @@ class Session:
         # committed: 연속 두 재전사가 일치해 확정된 접두 · prev_snapshot: 직전 재전사 결과
         self.committed = ""
         self.prev_snapshot = ""
-        self.fun_state = engine.new_stream() if engine_kind == "funasr" else None
+        self.fun_state = engine.new_stream() if engine_kind == "funasr-streaming" else None
         self.fun_pending = np.zeros(0, dtype=np.float32)
         # whisper-streaming: 프로세서가 상태(오디오 버퍼·확정 접두)를 가지므로 세션마다 하나
         self.ws_proc = engine.new_processor() if engine_kind == "whisper-streaming" else None
@@ -321,7 +348,7 @@ class Session:
         self.silence_sec = 0.0 if voiced else self.silence_sec + frame_sec
         self.had_speech = self.had_speech or voiced
 
-        if self.kind == "funasr":
+        if self.kind == "funasr-streaming":
             await self.on_pcm_funasr(pcm)
             return
         if self.kind == "whisper-streaming":
@@ -398,7 +425,7 @@ class Session:
     # 주기 partial (재전사 엔진 전용 — 현재 발화 버퍼 스냅샷 재전사)
     async def partial_loop(self):
         # funasr·whisper-streaming은 증분 엔진이라 재전사 루프가 필요 없다
-        if self.kind not in ("funasr", "whisper-streaming"):
+        if self.kind not in ("funasr-streaming", "whisper-streaming"):
             while True:
                 await asyncio.sleep(self.partial_interval)
                 if not self.had_speech or len(self.buf) < SAMPLE_RATE // 2:
@@ -459,7 +486,7 @@ class Session:
                 await self.send(tail.strip(), True)
             self.ws_proc = self.engine.new_processor()
             self.ws_pending = np.zeros(0, dtype=np.float32)
-        elif self.kind == "funasr":
+        elif self.kind == "funasr-streaming":
             if self.fun_state and (self.fun_state["text"] or len(self.fun_pending)):
                 pad = np.zeros(FunAsrEngine.CHUNK_SAMPLES, dtype=np.float32)
                 tail = np.concatenate([self.fun_pending, pad])[: FunAsrEngine.CHUNK_SAMPLES]
@@ -514,12 +541,12 @@ async def main():
     ap = argparse.ArgumentParser(description="실시간 STT WebSocket 서버")
     ap.add_argument(
         "--engine",
-        choices=["faster-whisper", "funasr", "sensevoice", "whisper-streaming"],
+        choices=["faster-whisper", "funasr-streaming", "funasr-offline", "sensevoice", "whisper-streaming"],
         default="faster-whisper",
     )
     ap.add_argument(
         "--model", default=None,
-        help="faster-whisper: tiny/base/small(기본)/medium/large-v3 · funasr/sensevoice: 모델명"
+        help="faster-whisper: tiny/base/small(기본)/medium/large-v3 · FunASR/SenseVoice: 모델명"
     )
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=None)
@@ -535,11 +562,15 @@ async def main():
 
     import websockets
 
-    if args.engine == "funasr":
+    if args.engine == "funasr-streaming":
         # 기본은 non-large 스트리밍 모델 — CPU에서 실시간(rtf<1) 보장.
         # large(paraformer-zh-streaming)는 CPU에서 rtf≈2로 백로그가 쌓여 실시간 불가.
         engine = FunAsrEngine(args.model or "iic/speech_paraformer_asr_nat-zh-cn-16k-common-vocab8404-online")
         port = args.port or 8766
+    elif args.engine == "funasr-offline":
+        # offline profile은 snapshot 재전사이며 대화용 partial SLA를 약속하지 않는다.
+        engine = FunAsrOfflineEngine(args.model or "paraformer-zh")
+        port = args.port or 8769
     elif args.engine == "sensevoice":
         engine = SenseVoiceEngine(args.model or "iic/SenseVoiceSmall", args.ncpu)
         port = args.port or 8767
