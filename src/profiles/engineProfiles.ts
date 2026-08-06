@@ -134,7 +134,9 @@ export function getEngineProfile(id: string): EngineProfile {
 
 export function resolveEngineProfile(id: string, overrides: ProviderConfig = {}): { profile: EngineProfile; providerId: string; config: ProviderConfig } {
   const profile = getEngineProfile(id);
-  return { profile, providerId: profile.providerId, config: { ...profile.config, ...overrides } };
+  const config = { ...profile.config, ...overrides };
+  if ('wsEndpoint' in profile.config) config.wsEndpoint = profile.config.wsEndpoint;
+  return { profile, providerId: profile.providerId, config };
 }
 
 export function supportsLanguage(profile: EngineProfile, language: string): boolean {

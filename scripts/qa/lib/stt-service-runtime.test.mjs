@@ -79,10 +79,12 @@ assert.throws(() => nonStreaming.resolve(), /service-managed/, 'resolver must re
 
 const runtime = createEngineBackedSttServiceRuntime({ engine, resolver });
 const seen = [];
+let completed = 0;
 const run = runtime.createRun({ kind: 'file', file: engine.file }, {
   partial: (text) => seen.push(`partial:${text}`),
   final: (text) => seen.push(`final:${text}`),
   error: (error) => seen.push(`error:${error instanceof Error ? error.message : String(error)}`),
+  complete: () => { completed += 1; },
 });
 
 await run.start();
@@ -107,11 +109,12 @@ assert.deepEqual(
   ['partial:중간', 'final:확정', 'error:socket dropped'],
   'service runtime must relay transcript and error events from the engine bus',
 );
-
 engine.stopFinal = 'tail-final';
 await run.stop();
 assert.equal(engine.stops, 1, 'service runtime should delegate stop to the current engine');
 assert.equal(seen.at(-1), 'final:tail-final', 'final drain emitted during stop must still reach the service sink');
+engine.bus.emit(SystemEvent.RECOGNITION_STOPPED, { provider: 'streaming', mode: engine.mode });
+assert.equal(completed, 1, 'engine natural stop must complete the service run without aborting its final drain');
 
 engine.bus.emit(FeatureEvent.TRANSCRIPT_FINAL, {
   text: 'late-final',

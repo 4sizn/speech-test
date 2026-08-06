@@ -43,11 +43,7 @@ class EngineBackedSttServiceRun implements SttServiceRun {
   }
 
   async stop(): Promise<void> {
-    try {
-      await this.#engine.stop();
-    } finally {
-      this.#cleanup();
-    }
+    await this.#engine.stop();
   }
 
   async abort(): Promise<void> {
@@ -62,6 +58,10 @@ class EngineBackedSttServiceRun implements SttServiceRun {
       }),
       this.#engine.bus.on(FeatureEvent.TRANSCRIPT_FINAL, (message) => {
         this.#sink.final(String(message.payload?.text ?? ''));
+      }),
+      this.#engine.bus.on(SystemEvent.RECOGNITION_STOPPED, () => {
+        this.#sink.complete();
+        this.#cleanup();
       }),
       this.#engine.bus.on(SystemEvent.RECOGNITION_ERROR, (message) => {
         this.#sink.error(new Error(String(message.payload?.message ?? 'STT runtime failed')));

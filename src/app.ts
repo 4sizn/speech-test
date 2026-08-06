@@ -160,10 +160,7 @@ engine.bus.system((m) => {
       setStatus(`인식 시작 · ${m.payload.provider} / ${modeLabel(m.payload.mode)}`, 'ok');
       break;
     case SystemEvent.RECOGNITION_STOPPED:
-      if (isServiceManagedProfile()) {
-        if (sttService.state === 'starting' || sttService.state === 'listening') void sttService.abort();
-        break;
-      }
+      if (isServiceManagedProfile()) break;
       setRunning(false);
       setBusy(false); // 로딩 중 중지(탈출구)로 끝난 경우도 컨트롤 복구
       // 에러 직후의 중지는 정상 종료가 아니다 — 방금 띄운 에러를 '대기 중'으로 덮지 않는다
