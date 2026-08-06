@@ -325,7 +325,7 @@ class Session:
             await self.on_pcm_funasr(pcm)
             return
         if self.kind == "whisper-streaming":
-            await self.on_pcm_wstream(pcm)
+            await self.on_pcm_wstream(pcm, voiced)
             return
 
         # faster-whisper: 발화 중이면 버퍼 누적, 무음 경계에서 확정
@@ -336,7 +336,7 @@ class Session:
         ):
             await self.finalize()
 
-    async def on_pcm_wstream(self, pcm: np.ndarray):
+    async def on_pcm_wstream(self, pcm: np.ndarray, voiced: bool):
         """
         whisper_streaming 증분 처리.
 
@@ -350,6 +350,13 @@ class Session:
         UFAL 서버 기본값과 같이 최소 청크(1s)를 모아 부른다. 추론이 밀리는 동안 ws_pending에
         쌓이고 다음 호출에 함께 들어가므로 오디오는 유실되지 않는다.
         """
+        # After a silence-driven finalize(), MediaStream tracks continue to emit
+        # silent callbacks. Never re-queue those frames: otherwise server-side
+        # inference falls behind and a later `stop` control message is trapped
+        # behind an unbounded silence backlog.
+        if not self.had_speech and not voiced:
+            return
+
         self.ws_pending = np.concatenate([self.ws_pending, pcm])
 
         # 무음이 충분히 이어지면 스트림을 끊는다.
