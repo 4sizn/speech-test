@@ -5,11 +5,14 @@
  * 그 외 모든 코드는 추상화(SttProvider/SttEngine/EventBus)에만 의존한다.
  * Provider 설정 폼은 각 Provider의 static configSchema를 보고 자동 렌더한다(하드코딩 없음).
  */
+import { SttService } from '@rsupport/rvs-stt-kit';
 import { SttEngine } from './core/SttEngine';
 import { SystemEvent, FeatureEvent, Mode } from './core/events';
 import type { ConfigField, ProviderConfig, RuntimeLocation } from './core/SttProvider';
 import { createProviderRegistry } from './providers/registerAll';
 import { ENGINE_PROFILES, getEngineProfile, resolveEngineProfile, supportsLanguage, type EngineProfile } from './profiles/engineProfiles';
+import { BootstrapProfileResolver } from './composition/BootstrapProfileResolver';
+import { createEngineBackedSttServiceRuntime } from './composition/SttServiceRuntime';
 import { DatasetRegistry } from './datasets/DatasetRegistry';
 import { AihubCallCenterAdapter } from './datasets/adapters/AihubCallCenterAdapter';
 import { mountDatasetPanel } from './ui/DatasetPanel';
@@ -30,6 +33,14 @@ const registry = createProviderRegistry();
 const datasetRegistry = new DatasetRegistry().register(AihubCallCenterAdapter);
 
 const engine = new SttEngine(registry);
+const profileResolver = new BootstrapProfileResolver(() => ({
+  profile: selectedProfile,
+  mode: engine.mode,
+  file: engine.file,
+}));
+const sttService = new SttService({
+  runtime: createEngineBackedSttServiceRuntime({ engine, resolver: profileResolver }),
+});
 
 // id → 메타(configSchema 포함) 조회용
 const META = new Map(registry.list().map((m) => [m.id, m]));
@@ -110,6 +121,10 @@ function saveCfg(id: string, obj: ProviderConfig): void {
   localStorage.setItem(cfgKey(id), JSON.stringify(obj));
 }
 
+function isServiceManagedProfile(): boolean {
+  return profileResolver.isServiceProfile();
+}
+
 // ── 3) 시스템 이벤트 → 상태 UI ────────────────────────────────────────
 engine.bus.system((m) => {
   switch (m.type) {
@@ -139,17 +154,20 @@ engine.bus.system((m) => {
       showToast('모델 준비 완료 — 인식을 진행합니다', { kind: 'ok' });
       break;
     case SystemEvent.RECOGNITION_STARTED:
+      if (isServiceManagedProfile()) break;
       lastErrorAt = 0;
       setRunning(true);
       setStatus(`인식 시작 · ${m.payload.provider} / ${modeLabel(m.payload.mode)}`, 'ok');
       break;
     case SystemEvent.RECOGNITION_STOPPED:
+      if (isServiceManagedProfile()) break;
       setRunning(false);
       setBusy(false); // 로딩 중 중지(탈출구)로 끝난 경우도 컨트롤 복구
       // 에러 직후의 중지는 정상 종료가 아니다 — 방금 띄운 에러를 '대기 중'으로 덮지 않는다
       if (performance.now() - lastErrorAt > 3000) setStatus('대기 중', 'idle');
       break;
     case SystemEvent.RECOGNITION_ERROR:
+      if (isServiceManagedProfile()) break;
       lastErrorAt = performance.now();
       // 토스트는 busy(모델 로딩) 때만이 아니라 **항상** 띄운다 — status는 다음 이벤트에
       // 덮일 수 있고, 시작 실패는 대부분 사용자가 다음 행동을 골라야 하는 상황이다
@@ -176,6 +194,7 @@ engine.bus.system((m) => {
 
 // ── 4) 기능 이벤트 → 자막 콘솔 ────────────────────────────────────────
 engine.bus.feature((m) => {
+  if (isServiceManagedProfile()) return;
   if (m.type === FeatureEvent.TRANSCRIPT_PARTIAL) {
     setInterim(m.payload.text);
   } else if (m.type === FeatureEvent.TRANSCRIPT_FINAL) {
@@ -184,6 +203,50 @@ engine.bus.feature((m) => {
   } else if (m.type === FeatureEvent.TRANSCRIPT_RESET) {
     el.transcript.innerHTML = '';
     setInterim('');
+  }
+});
+
+sttService.subscribe((event) => {
+  switch (event.type) {
+    case 'state':
+      if (event.state === 'starting') {
+        setBusy(true);
+        setStatus(`인식 준비 중 · ${selectedProfile?.label ?? 'Streaming ASR'}`, 'ok');
+      } else if (event.state === 'listening') {
+        lastErrorAt = 0;
+        setBusy(false);
+        setRunning(true);
+        setStatus(`인식 시작 · ${selectedProfile?.providerId ?? engine.provider?.id ?? 'streaming'} / ${modeLabel(engine.mode)}`, 'ok');
+      } else if (event.state === 'stopping') {
+        setBusy(true);
+      } else {
+        setRunning(false);
+        setBusy(false);
+        if (performance.now() - lastErrorAt > 3000) setStatus('대기 중', 'idle');
+      }
+      break;
+    case 'transcript':
+      if (event.phase === 'partial') {
+        setInterim(event.text);
+      } else {
+        appendFinal(event.text, {
+          provider: selectedProfile?.providerId ?? engine.provider?.id,
+          mode: engine.mode,
+        });
+        setInterim('');
+      }
+      break;
+    case 'error':
+      lastErrorAt = performance.now();
+      showToast(`인식 실패: ${event.error.message}`, {
+        kind: 'error',
+        duration: 9000,
+      });
+      setBusy(false);
+      setStatus(`에러: ${event.error.message}`, 'error');
+      break;
+    default:
+      break;
   }
 });
 
@@ -206,6 +269,7 @@ function populateProfiles(): void {
 }
 
 async function useProfile(id: string): Promise<void> {
+  if (sttService.state !== 'idle') await sttService.stop();
   const resolution = resolveEngineProfile(id, loadProfileCfg(getEngineProfile(id)));
   selectedProfile = resolution.profile;
   await engine.useProvider(resolution.providerId, resolution.config);
@@ -619,12 +683,22 @@ el.dropzone.addEventListener('click', () => el.fileInput.click());
 
 el.btnStart.addEventListener('click', async () => {
   try {
-    await engine.start();
+    if (isServiceManagedProfile()) {
+      await sttService.start(profileResolver.resolve().input);
+    } else {
+      await engine.start();
+    }
   } catch (err) {
     setStatus(err instanceof Error ? err.message : String(err), 'error');
   }
 });
-el.btnStop.addEventListener('click', () => void engine.stop());
+el.btnStop.addEventListener('click', () => {
+  if (isServiceManagedProfile()) {
+    void sttService.stop();
+  } else {
+    void engine.stop();
+  }
+});
 el.btnClear.addEventListener('click', () => {
   el.transcript.innerHTML = '';
   setInterim('');
