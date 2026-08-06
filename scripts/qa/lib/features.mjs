@@ -265,6 +265,8 @@ export function buildFeatures(profile = 'quick') {
 export const SERVER_PORTS = {
   'faster-whisper': 8765,
   funasr: 8766,
+  'funasr-streaming': 8766,
+  'funasr-offline': 8769,
   sensevoice: 8767,
   'whisper-streaming': 8768,
 };
