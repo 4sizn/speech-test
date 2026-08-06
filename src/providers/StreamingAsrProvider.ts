@@ -1,6 +1,8 @@
 import { StreamingAsrProvider as KitStreamingAsrProvider } from '@rsupport/rvs-stt-kit/streaming';
+import { AudioPcmTap } from '../core/AudioPcmTap';
 import { SttProvider, type ConfigField, type ProviderConfig, type RuntimeLocation, type SttInput } from '../core/SttProvider';
 import { SystemEvent, Mode } from '../core/events';
+import { createAudioPcmTapFactory } from './audioPcmTapPort';
 import { streamingEndpoints } from './rvsSttKitAdapter';
 
 interface StreamingConfig extends ProviderConfig {
@@ -29,6 +31,7 @@ const SERVE_ARGS_BY_ENDPOINT: Record<string, string> = {
   [streamingEndpoints.whisperStreaming]: '--engine whisper-streaming --port 8768',
   [streamingEndpoints.senseVoice]: '--engine sensevoice --port 8767',
 };
+const createAudioPcmTapPort = createAudioPcmTapFactory(AudioPcmTap);
 
 export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
   static override readonly id: string = 'streaming';
@@ -64,7 +67,11 @@ export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
     if (this._active) throw new Error('Streaming ASR가 이미 실행 중입니다');
 
     const endpoint = this.config.wsEndpoint;
-    const delegate = new KitStreamingAsrProvider({ endpoint, lang: input.lang ?? this.config.lang });
+    const delegate = new KitStreamingAsrProvider({
+      endpoint,
+      lang: input.lang ?? this.config.lang,
+      createPcmTap: createAudioPcmTapPort,
+    });
     delegate.bind({
       partial: (text) => this._sink?.partial(text),
       final: (text) => this._sink?.final(text),
