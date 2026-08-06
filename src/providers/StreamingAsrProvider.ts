@@ -42,12 +42,11 @@ export class StreamingAsrProvider extends SttProvider<StreamingConfig> {
       options: [
         { value: streamingEndpoints.fasterWhisper, label: '8765 · faster-whisper 재전사 — 한국어 권장 (CER 14.5% · 마이크 10.4%)' },
         { value: streamingEndpoints.whisperStreaming, label: '8768 · whisper_streaming 증분 — 긴 연속 발화용 (파일 18.4% · 짧은 발화엔 불리)' },
-        { value: streamingEndpoints.funAsr, label: '8766 · FunASR paraformer — ⚠ 중국어 전용(한국어는 중국어 음절로 매핑)' },
       ],
       hint:
         '고른 포트에 해당 엔진 서버가 떠 있어야 한다. ' +
-        '기동: cd server && .venv/bin/python realtime_asr_server.py --engine <faster-whisper|whisper-streaming|funasr> --port <포트>. ' +
-        'SenseVoice(8767)는 별도 Provider로 선택한다. 비교 시 서버를 동시에 띄우면 CPU를 다툰다.',
+        '기동: cd server && .venv/bin/python realtime_asr_server.py --engine <faster-whisper|whisper-streaming> --port <포트>. ' +
+        'FunASR(8766)와 SenseVoice(8767)는 전용 Provider로 선택한다. 비교 시 서버를 동시에 띄우면 CPU를 다툰다.',
     },
   ];
 
