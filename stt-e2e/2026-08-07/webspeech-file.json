@@ -140,6 +140,141 @@
           "timedOut": false
         }
       ]
+    },
+    {
+      "at": "2026-08-06T15:34:28.630Z",
+      "commit": "c473a63",
+      "dirty": true,
+      "profile": "full",
+      "env": {
+        "chrome": "Chrome/151.0.7922.75",
+        "vite": {
+          "url": "http://127.0.0.1:59811",
+          "port": 59811,
+          "managed": true,
+          "reused": false
+        },
+        "worktree": "/Users/hsshin-rsupport/Documents/work/tts-sound/speech-test",
+        "assets": {
+          "Xenova/whisper-base": true,
+          "Xenova/whisper-tiny": true,
+          "Xenova/whisper-small": true
+        },
+        "servers": {
+          "8765": "reused",
+          "8766": "reused",
+          "8767": "reused",
+          "8769": "failed"
+        },
+        "dataset": "aihub_call_center_dataset (AI Hub 상황별음성 상담 음성 / KtelSpeech)",
+        "samples": 7,
+        "fakeMic": true
+      },
+      "sourceHashes": {
+        "package.json": "3e18388ffa13",
+        "server/realtime_asr_server.py": "2c220b1757e6",
+        "src/core/AudioPcmTap.ts": "5c04d1c3b157",
+        "src/core/EventBus.ts": "ccc870ebb85a",
+        "src/core/ProviderRegistry.ts": "84e1a35d35d0",
+        "src/core/SttEngine.ts": "368c99253fd4",
+        "src/core/SttProvider.ts": "0ad91656a7fc",
+        "src/core/cer.ts": "d462c3123f08",
+        "src/core/events.ts": "c97d2242ef20",
+        "src/providers/FunAsrProvider.ts": "346480a23321",
+        "src/providers/Qwen3Provider.ts": "114f77b8891d",
+        "src/providers/SenseVoiceProvider.ts": "97b5e6023f34",
+        "src/providers/StreamingAsrProvider.ts": "54ec84fc14e9",
+        "src/providers/WebSpeechProvider.ts": "a58e37d3f521",
+        "src/providers/WhisperWasmProvider.ts": "c2e9ec3b81ad",
+        "src/providers/audioPcmTapPort.ts": "295e1ed90fa2",
+        "src/providers/registerAll.ts": "13cdda90c916",
+        "src/providers/rvsSttKitAdapter.ts": "ca6af7952c41",
+        "src/providers/streamingFinalDrain.ts": "d84c4a28f7fe",
+        "src/providers/whisper-worker.ts": "c9e3208c4bcb",
+        "src/qa/harness.ts": "006021fe7bca",
+        "vite.config.ts": "32419d7ae4c0"
+      },
+      "cerAvg": 0.0869,
+      "cerMedian": 0.079,
+      "cerWorst": 0.2222,
+      "msAvg": 5708,
+      "samples": 6,
+      "noFinals": 0,
+      "skipped": null,
+      "items": [
+        {
+          "id": "S00007727/0002",
+          "sec": 3.34,
+          "cer": 0.1053,
+          "distance": 2,
+          "refLength": 19,
+          "hypLength": 27,
+          "ms": 5213,
+          "finals": 1,
+          "partials": 22,
+          "timedOut": false
+        },
+        {
+          "id": "S00007727/0003",
+          "sec": 2.64,
+          "cer": 0.0526,
+          "distance": 1,
+          "refLength": 19,
+          "hypLength": 25,
+          "ms": 4397,
+          "finals": 1,
+          "partials": 19,
+          "timedOut": false
+        },
+        {
+          "id": "S00007731/0001",
+          "sec": 2.65,
+          "cer": 0.2222,
+          "distance": 4,
+          "refLength": 18,
+          "hypLength": 16,
+          "ms": 4415,
+          "finals": 1,
+          "partials": 14,
+          "timedOut": false
+        },
+        {
+          "id": "S00007731/0002",
+          "sec": 6.51,
+          "cer": 0.1111,
+          "distance": 4,
+          "refLength": 36,
+          "hypLength": 51,
+          "ms": 8425,
+          "finals": 1,
+          "partials": 44,
+          "timedOut": false
+        },
+        {
+          "id": "S00007735/0007",
+          "sec": 5.38,
+          "cer": 0.0303,
+          "distance": 1,
+          "refLength": 33,
+          "hypLength": 41,
+          "ms": 7114,
+          "finals": 1,
+          "partials": 26,
+          "timedOut": false
+        },
+        {
+          "id": "S00007735/0009",
+          "sec": 2.91,
+          "cer": 0,
+          "distance": 0,
+          "refLength": 17,
+          "hypLength": 22,
+          "ms": 4684,
+          "finals": 1,
+          "partials": 17,
+          "timedOut": false
+        }
+      ]
     }
   ]
 }
